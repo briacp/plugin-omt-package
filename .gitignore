@@ -16,3 +16,15 @@ gradle-app.setting
 .classpath
 .project
 .settings/
+
+# Intellij IDEA
+plugin-omt-package.iml
+plugin-omt-package.ipr
+plugin-omt-package.iws
+.idea/
+.idea/compiler.xml
+.idea/encodings.xml
+.idea/gradle.xml
+.idea/misc.xml
+.idea/uiDesigner.xml
+.idea/vcs.xml
