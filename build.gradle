@@ -48,7 +48,7 @@ jar {
         // plugin's main class name is defined in gradle.properties file.
         attributes(
                 "OmegaT-Plugins": pluginMainClass,
-                "Plugin-Version": pluginVersion,
+                "Plugin-Version": version,
                 "Plugin-Name": pluginName
         )
     }
