@@ -13,7 +13,15 @@ import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-/** Copy of org.omegat.util.ProjectFileStorage just to be able to create an project.properties */
+/** Copy of org.omegat.util.ProjectFileStorage just to be able to create an project.properties.
+ *
+ * If/When the OMT is included in the main app, this class will be deprecated by adding a method such as
+ *
+ *   public static void writeProjectFile(ProjectProperties props)throws Exception{
+ *       File outFile=new File(props.getProjectRoot(),OConsts.FILE_PROJECT);
+ *       writeProjectFile(props,outFile);
+ *   }
+ */
 public class ProjectFileStorage {
     private static final JAXBContext CONTEXT;
     static {

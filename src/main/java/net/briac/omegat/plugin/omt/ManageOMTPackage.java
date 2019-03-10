@@ -23,6 +23,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Enumeration;
 import java.util.Locale;
+import java.util.ResourceBundle;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
@@ -32,8 +33,11 @@ import static org.omegat.core.Core.getMainWindow;
 public class ManageOMTPackage {
 
     public static final String OMT_EXTENSION = ".omt";
+    public static final String IGNORE_FILE = ".ignore";
     private static JMenuItem importOMT;
     private static JMenuItem exportOMT;
+
+    static final ResourceBundle res = ResourceBundle.getBundle("omt-package", Locale.getDefault());
 
     public static void loadPlugins() {
 
@@ -45,23 +49,24 @@ public class ManageOMTPackage {
                 IMainMenu menu = getMainWindow().getMainMenu();
                 JMenu projectMenu = menu.getProjectMenu();
 
+                int startMenuIndex = projectMenu.getItemCount() - 6;
+
                 importOMT = new JMenuItem();
-                Mnemonics.setLocalizedText(importOMT, "Import OMT Package...");
+                Mnemonics.setLocalizedText(importOMT, res.getString("omt.menu.import"));
                 importOMT.addActionListener(e -> {
                     projectImportOMT();
                 });
 
-
-                int itemCount = projectMenu.getItemCount();
-                projectMenu.add(new JPopupMenu.Separator(), itemCount -3);
-                projectMenu.add(importOMT,itemCount - 2);
+                projectMenu.add(new JPopupMenu.Separator(), startMenuIndex++);
+                projectMenu.add(importOMT, startMenuIndex++);
 
                 exportOMT = new JMenuItem();
-                Mnemonics.setLocalizedText(exportOMT, "Export OMT Package...");
+                Mnemonics.setLocalizedText(exportOMT, res.getString("omt.menu.export"));
                 exportOMT.addActionListener(e -> {
                     projectExportOMT();
                 });
-                projectMenu.add(exportOMT,itemCount - 1);
+                projectMenu.add(exportOMT, startMenuIndex++);
+                //projectMenu.add(new JPopupMenu.Separator(), startMenuIndex++);
 
                 onProjectStatusChanged(false);
             }
@@ -88,7 +93,7 @@ public class ManageOMTPackage {
             return;
         }
 
-        ChooseOmtProject ndm = new ChooseOmtProject();
+        ChooseOmtProject ndm = new ChooseOmtProject(res.getString("omt.chooser.import"));
 
         // ask for OMT file
         int ndmResult = ndm.showOpenDialog(Core.getMainWindow().getApplicationFrame());
@@ -128,7 +133,7 @@ public class ManageOMTPackage {
         // commit the current entry first
         Core.getEditor().commitAndLeave();
 
-        ChooseOmtProject ndm = new ChooseOmtProject();
+        ChooseOmtProject ndm = new ChooseOmtProject(res.getString("omt.chooser.export"));
 
         // ask for new OMT file
         // default name
@@ -142,6 +147,9 @@ public class ManageOMTPackage {
             // user press 'Cancel' in project creation dialog
             return;
         }
+
+        // TODO Check and ask if the user wants to overwrite an existing package
+
         // add .zip extension if there is no
         final File omtFile = ndm.getSelectedFile().getName().toLowerCase(Locale.ENGLISH)
                 .endsWith(OMT_EXTENSION) ? ndm.getSelectedFile()
@@ -196,26 +204,47 @@ public class ManageOMTPackage {
         ZipEntry e = zip.getEntry(OConsts.FILE_PROJECT);
         if (e == null) {
             zip.close();
-            throw new Exception("Invalid OMT file, missing file \"." + OConsts.FILE_PROJECT + "\".");
+            throw new Exception(res.getString("omt.invalid.package"));
         }
 
-        File projectDir = new File(omtFile.getParentFile(), omtName);
-        projectDir.mkdirs();
+        // Check if we're inside a project folder
+        File projectDir = new File(omtFile.getParent(), OConsts.FILE_PROJECT);
 
-        for (Enumeration<? extends ZipEntry> en = zip.entries(); en.hasMoreElements();) {
+        Log.log(String.format("Checking for project file \"%s\": %s", projectDir.getAbsolutePath(), projectDir.exists()));
+
+        if (projectDir.exists()) {
+            Log.log(res.getString("omt.update.package"));
+            projectDir = omtFile.getParentFile();
+        }
+        else {
+            Log.log(res.getString("omt.new.package"));
+            projectDir = new File(omtFile.getParentFile(), omtName);
+            projectDir.mkdirs();
+        }
+
+        for (Enumeration<? extends ZipEntry> en = zip.entries(); en.hasMoreElements(); ) {
             e = en.nextElement();
 
             File outFile = new File(projectDir, e.getName());
             if (e.isDirectory()) {
                 outFile.mkdirs();
             } else {
-                try (InputStream in = zip.getInputStream(e)) {
+                if (e.getName().equals(IGNORE_FILE)) {
+                    continue;
+                }
+                if (e.getName().equals(OConsts.DEFAULT_INTERNAL + "/" + OConsts.STATUS_EXTENSION)
+                        && outFile.exists()) {
+                    Log.log(res.getString("omt.skip.project_save"));
                     // TODO Maybe not overwrite project_save.tmx if it already exists? Ask the user?
-                    if (e.getName().equals(OConsts.DEFAULT_INTERNAL + "/" + OConsts.STATUS_EXTENSION)
-                            && outFile.exists()) {
+                }
 
+                try (InputStream in = zip.getInputStream(e)) {
+                    try {
+                        FileUtils.copyInputStreamToFile(in, outFile);
                     }
-                    FileUtils.copyInputStreamToFile(in, outFile);
+                    catch (IOException ex) {
+                        Log.log(String.format("Error unzipping file \"%s\": %s", outFile, ex.getMessage()));
+                    }
                 }
             }
         }
@@ -238,18 +267,21 @@ public class ManageOMTPackage {
         }
     }
 
-    // FIXME includes empty directory (glossary, etc.)
     private static final void addZipDir(final ZipOutputStream out, final Path root, final Path dir,
-            final ProjectProperties props) throws IOException {
+                                        final ProjectProperties props) throws IOException {
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
             for (Path child : stream) {
                 final Path childPath = child.getFileName();
 
-                if (childPath.toFile().getName().endsWith(OConsts.BACKUP_EXTENSION)) {
+                final String name = childPath.toFile().getName();
+                if (name.endsWith(OConsts.BACKUP_EXTENSION) || name.endsWith(OMT_EXTENSION)
+                ) {
+                    // Skip .bak and .omt files
                     continue;
                 }
                 if (childPath.endsWith(OConsts.FILE_PROJECT)) {
-
+                    // Special case - when a project is opened, the project file is locked and
+                    // can't be copied directly. To avoid this, we make a temp copy.
                     File tmpProjectFile = File.createTempFile("omt", null, props.getProjectRootDir());
                     try {
                         ProjectFileStorage.writeProjectFile(props, tmpProjectFile);
@@ -265,6 +297,12 @@ public class ManageOMTPackage {
 
                 Path entry = root == null ? childPath : Paths.get(root.toString(), childPath.toString());
                 if (Files.isDirectory(child)) {
+                    // Before recursing, we add a ZipEntry for the directory to allow
+                    // empty dirs.
+                    if (child.toFile().listFiles().length == 0) {
+                        out.putNextEntry(new ZipEntry(name + File.separatorChar + IGNORE_FILE));
+                        out.closeEntry();
+                    }
                     addZipDir(out, entry, child, props);
                 } else {
                     out.putNextEntry(new ZipEntry(entry.toString()));

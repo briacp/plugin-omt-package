@@ -1,6 +1,5 @@
 package net.briac.omegat.plugin.omt;
 
-import org.omegat.util.OStrings;
 import org.omegat.util.Preferences;
 
 import javax.swing.*;
@@ -10,19 +9,19 @@ import java.util.Locale;
 
 @SuppressWarnings("serial")
 public final class ChooseOmtProject extends JFileChooser {
-    public ChooseOmtProject() {
+    public ChooseOmtProject(String dialogTitle) {
         super(Preferences.getPreference(Preferences.CURRENT_FOLDER));
 
         setMultiSelectionEnabled(false);
         setFileHidingEnabled(true);
         setFileSelectionMode(FILES_ONLY);
-        setDialogTitle(OStrings.getString("PP_OMT_OPEN"));
+        setDialogTitle(dialogTitle);
         setAcceptAllFileFilterUsed(false);
         addChoosableFileFilter(new FileFilter() {
 
             @Override
             public String getDescription() {
-                return OStrings.getString("PP_OMT_OPEN_FILTER");
+                return ManageOMTPackage.res.getString("omt.chooser.filter");
             }
 
             @Override
