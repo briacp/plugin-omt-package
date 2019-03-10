@@ -1,16 +1,22 @@
 # OMT OmegaT Package Plugin
 
+This plugin introduce an option to import and export OmegaT packages. These packages are made so that it can be easier
+to share OmegaT projects between people without using team projects.
 
-
-## Test report
-
-You will find a test results report at `build/reports/` and can show it with your favorite web browser.
+At the moment, it is simply a zipped copy of the project, excluding backup files.
 
 ## Installation
 
 You can get a plugin jar file from zip/tgz distribution file.
 OmegaT plugin should be placed in `$HOME/.omegat/plugin` or `C:\Program Files\OmegaT\plugin`
 depending on your operating system.
+
+## RFE
+
+Relevant feature request:
+
+* [RFE #1425](https://sourceforge.net/p/omegat/feature-requests/1425/)
+* [RFE #114](https://sourceforge.net/p/omegat/feature-requests/114/)
 
 ## License
 
