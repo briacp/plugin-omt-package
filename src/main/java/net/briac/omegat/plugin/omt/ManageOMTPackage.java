@@ -1,6 +1,5 @@
 package net.briac.omegat.plugin.omt;
 
-import org.apache.commons.io.FileUtils;
 import org.omegat.core.Core;
 import org.omegat.core.CoreEvents;
 import org.omegat.core.data.ProjectProperties;
@@ -8,6 +7,7 @@ import org.omegat.core.events.IApplicationEventListener;
 import org.omegat.gui.main.IMainMenu;
 import org.omegat.gui.main.IMainWindow;
 import org.omegat.gui.main.ProjectUICommands;
+import org.omegat.util.FileUtil;
 import org.omegat.util.Log;
 import org.omegat.util.OConsts;
 import org.omegat.util.gui.OmegaTFileChooser;
@@ -34,10 +34,9 @@ public class ManageOMTPackage {
 
     public static final String OMT_EXTENSION = ".omt";
     public static final String IGNORE_FILE = ".ignore";
+    static final ResourceBundle res = ResourceBundle.getBundle("omt-package", Locale.getDefault());
     private static JMenuItem importOMT;
     private static JMenuItem exportOMT;
-
-    static final ResourceBundle res = ResourceBundle.getBundle("omt-package", Locale.getDefault());
 
     public static void loadPlugins() {
 
@@ -148,12 +147,30 @@ public class ManageOMTPackage {
             return;
         }
 
-        // TODO Check and ask if the user wants to overwrite an existing package
-
         // add .zip extension if there is no
         final File omtFile = ndm.getSelectedFile().getName().toLowerCase(Locale.ENGLISH)
                 .endsWith(OMT_EXTENSION) ? ndm.getSelectedFile()
                 : new File(ndm.getSelectedFile().getAbsolutePath() + OMT_EXTENSION);
+
+        Log.log("\n\n*******\n********\n");
+
+        // Check and ask if the user wants to overwrite an existing package
+        if (omtFile.exists()) {
+            int overwritePackage = JOptionPane.showConfirmDialog(
+                    getMainWindow().getApplicationFrame(),
+                    res.getString("omt.dialog.overwrite_package"),
+                    res.getString("omt.dialog.overwrite_package.title"),
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.QUESTION_MESSAGE);
+
+            if (overwritePackage == 0) {
+                Log.log("Overwriting existing package");
+            } else {
+                Log.log("Not overwriting existing package");
+                return;
+            }
+
+        }
 
         new SwingWorker<Void, Void>() {
             protected Void doInBackground() throws Exception {
@@ -215,8 +232,7 @@ public class ManageOMTPackage {
         if (projectDir.exists()) {
             Log.log(res.getString("omt.update.package"));
             projectDir = omtFile.getParentFile();
-        }
-        else {
+        } else {
             Log.log(res.getString("omt.new.package"));
             projectDir = new File(omtFile.getParentFile(), omtName);
             projectDir.mkdirs();
@@ -226,23 +242,40 @@ public class ManageOMTPackage {
             e = en.nextElement();
 
             File outFile = new File(projectDir, e.getName());
+
+            if (outFile.getName().equals(OConsts.STATUS_EXTENSION) &&
+                    outFile.getParentFile().getName().equals(OConsts.DEFAULT_INTERNAL) &&
+                    outFile.exists()) {
+                // Maybe not overwrite project_save.tmx if it already exists? Ask the user?
+                int overwriteSave = JOptionPane.showConfirmDialog(
+                        getMainWindow().getApplicationFrame(),
+                        res.getString("omt.dialog.overwrite_project_save"),
+                        res.getString("omt.dialog.overwrite_project_save.title"),
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.QUESTION_MESSAGE);
+
+                if (overwriteSave == 0) {
+                    // Make a backup even if the user want to overwrite, to be on the safe side.
+                    Log.log("Overwriting project_save.tmx");
+                    final File f = new File(new File(projectDir, OConsts.DEFAULT_INTERNAL), OConsts.STATUS_EXTENSION);
+                    Log.log(String.format("Backuping project file \"%s\"", f.getAbsolutePath()));
+                    FileUtil.backupFile(f);
+                } else {
+                    Log.log("Skipping project_save.tmx");
+                    continue;
+                }
+            }
+
             if (e.isDirectory()) {
                 outFile.mkdirs();
             } else {
                 if (e.getName().equals(IGNORE_FILE)) {
                     continue;
                 }
-                if (e.getName().equals(OConsts.DEFAULT_INTERNAL + "/" + OConsts.STATUS_EXTENSION)
-                        && outFile.exists()) {
-                    Log.log(res.getString("omt.skip.project_save"));
-                    // TODO Maybe not overwrite project_save.tmx if it already exists? Ask the user?
-                }
-
                 try (InputStream in = zip.getInputStream(e)) {
                     try {
-                        FileUtils.copyInputStreamToFile(in, outFile);
-                    }
-                    catch (IOException ex) {
+                        org.apache.commons.io.FileUtils.copyInputStreamToFile(in, outFile);
+                    } catch (IOException ex) {
                         Log.log(String.format("Error unzipping file \"%s\": %s", outFile, ex.getMessage()));
                     }
                 }
@@ -265,6 +298,13 @@ public class ManageOMTPackage {
         try (ZipOutputStream out = new ZipOutputStream(bos)) {
             addZipDir(out, null, path, props);
         }
+
+        JOptionPane.showMessageDialog(
+                getMainWindow().getApplicationFrame(),
+                res.getString("omt.dialog.overwrite_package.created"),
+                res.getString("omt.dialog.overwrite_package.created.title"),
+                JOptionPane.INFORMATION_MESSAGE
+        );
     }
 
     private static final void addZipDir(final ZipOutputStream out, final Path root, final Path dir,
