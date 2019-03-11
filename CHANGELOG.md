@@ -1,5 +1,13 @@
 # Change Log
 
+## [v1.0.2]
+
+### Add
+- Configuration file omt-package-config.properties
+- Option `exclude-pattern` to specify regular expressions (separated by ";") of files to exclude.
+- Option `open-directory-after-export` (true/false) to open the folder containing the created package.
+- Option `generate-target-files` (true/false) to generate the target documents before creating the package.
+
 ## [v1.0.1]
 
 ### Changed

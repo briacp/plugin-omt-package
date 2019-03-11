@@ -30,6 +30,7 @@ import org.omegat.gui.main.ProjectUICommands;
 import org.omegat.util.FileUtil;
 import org.omegat.util.Log;
 import org.omegat.util.OConsts;
+import org.omegat.util.StaticUtils;
 import org.omegat.util.gui.OmegaTFileChooser;
 import org.omegat.util.gui.UIThreadsUtil;
 import org.openide.awt.Mnemonics;
@@ -41,9 +42,8 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.Enumeration;
-import java.util.Locale;
-import java.util.ResourceBundle;
+import java.util.List;
+import java.util.*;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
@@ -54,9 +54,19 @@ public class ManageOMTPackage {
 
     public static final String OMT_EXTENSION = ".omt";
     public static final String IGNORE_FILE = ".empty";
-    static final ResourceBundle res = ResourceBundle.getBundle("omt-package", Locale.getDefault());
+    public static final String CONFIG_FILE = "omt-package-config.properties";
+
+    public static final String PROPERTY_EXCLUDE = "exclude-pattern";
+    public static final String DEFAULT_EXCLUDE = "\\.(zip|bak|omt)$";
+    public static final String PROPERTY_OPEN_DIR = "open-directory-after-export";
+    public static final String PROPERTY_GENERATE_TARGET = "generate-target-files";
+
+    protected static final ResourceBundle res = ResourceBundle.getBundle("omt-package", Locale.getDefault());
+
     private static JMenuItem importOMT;
     private static JMenuItem exportOMT;
+
+    private static Properties pluginProps = new Properties();
 
     public static void loadPlugins() {
 
@@ -108,6 +118,8 @@ public class ManageOMTPackage {
     public static void projectImportOMT() {
         UIThreadsUtil.mustBeSwingThread();
 
+        loadPluginProps();
+
         if (Core.getProject().isProjectLoaded()) {
             return;
         }
@@ -144,6 +156,8 @@ public class ManageOMTPackage {
 
     public static void projectExportOMT() {
         UIThreadsUtil.mustBeSwingThread();
+
+        loadPluginProps();
 
         if (!Core.getProject().isProjectLoaded()) {
             return;
@@ -201,16 +215,23 @@ public class ManageOMTPackage {
 
                 mainWindow.showStatusMessageRB("MW_STATUS_SAVING");
 
-                Core.executeExclusively(true, () -> {
-                    Core.getProject().saveProject(true);
-                    try {
-                        Core.getProject().compileProject(".*");
-                    } catch (Exception ex) {
-                        throw new RuntimeException(ex);
-                    }
-                });
+                if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_GENERATE_TARGET, "false"))) {
+                    Core.executeExclusively(true, () -> {
+                        Core.getProject().saveProject(true);
+                        try {
+                            Core.getProject().compileProject(".*");
+                        } catch (Exception ex) {
+                            throw new RuntimeException(ex);
+                        }
+                    });
+                }
 
                 createOmt(omtFile, Core.getProject().getProjectProperties());
+
+                // Display the containing folder on the desktop
+                if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_OPEN_DIR, "false"))) {
+                    Desktop.getDesktop().open(omtFile.getParentFile());
+                }
 
                 mainWindow.showStatusMessageRB("MW_STATUS_SAVED");
                 mainWindow.setCursor(oldCursor);
@@ -229,6 +250,39 @@ public class ManageOMTPackage {
         }.execute();
     }
 
+    private static void loadPluginProps() {
+        pluginProps = new Properties();
+        File propFile = new File(StaticUtils.getConfigDir(), CONFIG_FILE);
+        if (propFile.exists()) {
+            try (FileInputStream inStream = new FileInputStream(propFile)) {
+                pluginProps.load(inStream);
+                System.out.println("OMT App Plugin Properties");
+                pluginProps.list(System.out);
+            } catch (IOException e) {
+                Log.log(String.format("Could not load plugin property file \"%s\"", propFile.getAbsolutePath()));
+            }
+        } else {
+            System.out.println(String.format("No app plugin properties \"%s\"", propFile.getAbsolutePath()));
+        }
+
+        if (!Core.getProject().isProjectLoaded()) {
+            // No project specific properties!
+            return;
+        }
+
+        propFile = new File(Core.getProject().getProjectProperties().getProjectRootDir(), CONFIG_FILE);
+        if (propFile.exists()) {
+            try (FileInputStream inStream = new FileInputStream(propFile)) {
+                pluginProps.load(inStream);
+                System.out.println("OMT Project Plugin Properties");
+                pluginProps.list(System.out);
+            } catch (IOException e) {
+                Log.log(String.format("Could not load project plugin property file \"%s\"", propFile.getAbsolutePath()));
+            }
+        } else {
+            System.out.println(String.format("No project plugin propeties \"%s\"", propFile.getAbsolutePath()));
+        }
+    }
 
     /**
      * It creates project internals from OMT zip file.
@@ -313,10 +367,14 @@ public class ManageOMTPackage {
             throw new IllegalArgumentException("Path must be a directory.");
         }
 
+        List<String> listExcludes = Arrays.asList(pluginProps.getProperty(PROPERTY_EXCLUDE, DEFAULT_EXCLUDE).split(";"));
+
+        DirectoryStream.Filter<Path> filter = new DirectoryFilter(listExcludes);
+
         BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(omtZip));
         Log.log(String.format("Zipping to file [%s]", omtZip.getAbsolutePath()));
         try (ZipOutputStream out = new ZipOutputStream(bos)) {
-            addZipDir(out, null, path, props);
+            addZipDir(out, null, path, props, filter);
         }
 
         JOptionPane.showMessageDialog(
@@ -328,20 +386,10 @@ public class ManageOMTPackage {
     }
 
     private static final void addZipDir(final ZipOutputStream out, final Path root, final Path dir,
-                                        final ProjectProperties props) throws IOException {
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir)) {
+                                        final ProjectProperties props, DirectoryStream.Filter<Path> filter) throws IOException {
+        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, filter)) {
             for (Path child : stream) {
                 final Path childPath = child.getFileName();
-
-                final String name = childPath.toFile().getName();
-
-                // TODO - The list of excluded/included files should be read from a 
-                // properties file in OmT config folder.
-                if (name.endsWith(".zip") || name.endsWith(OConsts.BACKUP_EXTENSION) || name.endsWith(OMT_EXTENSION)
-                ) {
-                    // Skip .bak and .omt files
-                    continue;
-                }
 
                 // Skip projects inside projects
                 if (Files.isDirectory(child) && new File(child.toFile(), OConsts.FILE_PROJECT).exists()) {
@@ -380,7 +428,7 @@ public class ManageOMTPackage {
                         out.putNextEntry(new ZipEntry(emptyDirFile));
                         out.closeEntry();
                     }
-                    addZipDir(out, entry, child, props);
+                    addZipDir(out, entry, child, props, filter);
                 } else {
                     Log.log(String.format("addZipDir\tfile\t[%s]", entry));
                     out.putNextEntry(new ZipEntry(entry.toString()));
