@@ -5,6 +5,7 @@ plugins {
     id 'distribution'
     id 'maven'
     id 'idea'
+	id 'eclipse'
 }
 
 repositories {
@@ -102,12 +103,10 @@ distributions {
     }
 }
 
-task deployOmegaT(type: Copy) {
-
+task installPlugin(type: Copy) {
         from 'build/install/plugin-omt-package/plugin'
-        into omegatDir
+        into omegatPluginDir
         include('*.jar')
-
 }
 
-installDist.dependsOn deployOmegaT
+installPlugin.dependsOn installDist

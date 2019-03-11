@@ -53,7 +53,7 @@ import static org.omegat.core.Core.getMainWindow;
 public class ManageOMTPackage {
 
     public static final String OMT_EXTENSION = ".omt";
-    public static final String IGNORE_FILE = ".ignore";
+    public static final String IGNORE_FILE = ".empty";
     static final ResourceBundle res = ResourceBundle.getBundle("omt-package", Locale.getDefault());
     private static JMenuItem importOMT;
     private static JMenuItem exportOMT;
@@ -172,7 +172,7 @@ public class ManageOMTPackage {
                 .endsWith(OMT_EXTENSION) ? ndm.getSelectedFile()
                 : new File(ndm.getSelectedFile().getAbsolutePath() + OMT_EXTENSION);
 
-        Log.log("\n\n*******\n********\n");
+        Log.log(String.format("Exporting OMT \"%s\"", omtFile.getAbsolutePath()));
 
         // Check and ask if the user wants to overwrite an existing package
         if (omtFile.exists()) {
@@ -314,7 +314,7 @@ public class ManageOMTPackage {
         }
 
         BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(omtZip));
-
+        Log.log(String.format("Zipping to file [%s]", omtZip.getAbsolutePath()));
         try (ZipOutputStream out = new ZipOutputStream(bos)) {
             addZipDir(out, null, path, props);
         }
@@ -334,24 +334,39 @@ public class ManageOMTPackage {
                 final Path childPath = child.getFileName();
 
                 final String name = childPath.toFile().getName();
-                if (name.endsWith(OConsts.BACKUP_EXTENSION) || name.endsWith(OMT_EXTENSION)
+
+                // TODO - The list of excluded/included files should be read from a 
+                // properties file in OmT config folder.
+                if (name.endsWith(".zip") || name.endsWith(OConsts.BACKUP_EXTENSION) || name.endsWith(OMT_EXTENSION)
                 ) {
                     // Skip .bak and .omt files
                     continue;
                 }
-                if (childPath.endsWith(OConsts.FILE_PROJECT)) {
+
+                // Skip projects inside projects
+                if (Files.isDirectory(child) && new File(child.toFile(), OConsts.FILE_PROJECT).exists()) {
+                    Log.log(String.format("The directory \"%s\" appears to be an OmegaT project, we'll skip it.", child.toFile().getAbsolutePath()));
+                    continue;
+                }
+
+                if (root == null && childPath.endsWith(OConsts.FILE_PROJECT)) {
                     // Special case - when a project is opened, the project file is locked and
                     // can't be copied directly. To avoid this, we make a temp copy.
-                    File tmpProjectFile = File.createTempFile("omt", null, props.getProjectRootDir());
+                    // We name it with a .bak extension to make sure it's not included in the package.
+                    File tmpProjectFile = File.createTempFile("omt", OConsts.BACKUP_EXTENSION, props.getProjectRootDir());
                     try {
                         ProjectFileStorage.writeProjectFile(props, tmpProjectFile);
                     } catch (Exception e) {
                         throw new IOException(e);
                     }
+                    Log.log(String.format("addZipDir\tproject\t[%s]", OConsts.FILE_PROJECT));
                     out.putNextEntry(new ZipEntry(OConsts.FILE_PROJECT));
                     Files.copy(Paths.get(tmpProjectFile.getAbsolutePath()), out);
                     out.closeEntry();
-                    tmpProjectFile.delete();
+                    boolean isTmpDeleted = tmpProjectFile.delete();
+                    if (!isTmpDeleted) {
+                        Log.log(String.format("Could not delete temporary file \"%s\". You can safely delete it.", tmpProjectFile.getAbsolutePath()));
+                    }
                     continue;
                 }
 
@@ -360,11 +375,14 @@ public class ManageOMTPackage {
                     // Before recursing, we add a ZipEntry for the directory to allow
                     // empty dirs.
                     if (child.toFile().listFiles().length == 0) {
-                        out.putNextEntry(new ZipEntry(name + File.separatorChar + IGNORE_FILE));
+                        String emptyDirFile = entry.toString() + File.separatorChar + IGNORE_FILE;
+                        Log.log(String.format("addZipDir\tempty\t[%s]", emptyDirFile));
+                        out.putNextEntry(new ZipEntry(emptyDirFile));
                         out.closeEntry();
                     }
                     addZipDir(out, entry, child, props);
                 } else {
+                    Log.log(String.format("addZipDir\tfile\t[%s]", entry));
                     out.putNextEntry(new ZipEntry(entry.toString()));
                     Files.copy(child, out);
                     out.closeEntry();
