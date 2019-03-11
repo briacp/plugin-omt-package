@@ -11,6 +11,10 @@ You can get a plugin jar file from zip/tgz distribution file.
 OmegaT plugin should be placed in `$HOME/.omegat/plugin` or `C:\Program Files\OmegaT\plugin`
 depending on your operating system.
 
+## Sponsor
+
+Thanks a lot to [cApStAn](http://www.capstan.be/) for sponsoring the development of this plugin.
+
 ## RFE
 
 Relevant feature request:
