@@ -43,6 +43,8 @@ generate-target-files=false
 
 Thanks a lot to [cApStAn](http://www.capstan.be/) for sponsoring the development of this plugin.
 
+![cApStAn](http://www.capstan.be/wp-content/themes/capstan/img/logo-capstan.png)
+
 ## RFE
 
 Relevant feature request:
