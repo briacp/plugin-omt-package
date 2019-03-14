@@ -37,6 +37,12 @@ open-directory-after-export=false
 # If set to true, the translated documents will be created before
 # creating the package. (default: false)
 generate-target-files=false
+
+# If this property is set, the script located in the OmegaT scripts
+# folder will be executed. The OMT package file is available in the
+# binding "omtPackageFile". The console output is done in OmegaT
+# logfile, not in the scripting window.
+#post-package-script=processOmtPackage.groovy
 ```
 
 ## Sponsor
