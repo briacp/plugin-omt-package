@@ -64,6 +64,7 @@ public class ManageOMTPackage {
     public static final String DEFAULT_EXCLUDE = "\\.(zip|bak|omt)$";
     public static final String PROPERTY_OPEN_DIR = "open-directory-after-export";
     public static final String PROPERTY_GENERATE_TARGET = "generate-target-files";
+    public static final String PROPERTY_PROMPT_DELETE_IMPORT = "prompt-remove-omt-after-import";
     private static final Logger LOGGER = Logger.getLogger(ManageOMTPackage.class.getName());
 
     protected static final ResourceBundle res = ResourceBundle.getBundle("omt-package", Locale.getDefault());
@@ -149,11 +150,30 @@ public class ManageOMTPackage {
 
             protected void done() {
                 try {
+
+                    if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_PROMPT_DELETE_IMPORT, "false"))) {
+                        int deletePackage = JOptionPane.showConfirmDialog(
+                                getMainWindow().getApplicationFrame(),
+                                res.getString("omt.dialog.delete_package"),
+                                res.getString("omt.dialog.delete_package.title"),
+                                JOptionPane.YES_NO_OPTION,
+                                JOptionPane.QUESTION_MESSAGE);
+
+                        if (deletePackage == 0) {
+                            Log.log("Deleting imported package");
+                            if (!omtFile.delete()) {
+                                Log.log(String.format("Could not delete the file %s", omtFile.getAbsolutePath()));
+                            }
+                        } else {
+                            Log.log("Keeping imported package");
+                        }
+                    }
+
                     get();
                     SwingUtilities.invokeLater(Core.getEditor()::requestFocus);
                 } catch (Exception ex) {
                     Log.logErrorRB(ex, "PP_ERROR_UNABLE_TO_READ_PROJECT_FILE");
-                    Core.getMainWindow().displayErrorRB(ex, "PP_ERROR_UNABLE_TO_READ_PROJECT_FILE");
+                    getMainWindow().displayErrorRB(ex, "PP_ERROR_UNABLE_TO_READ_PROJECT_FILE");
                 }
             }
         }.execute();

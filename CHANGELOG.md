@@ -4,6 +4,7 @@
 
 ### Add
 - Property "post-package-script" to execute a script after the package creation.
+- Property "prompt-remove-omt-after-import" (true/false) to ask if the user wants to delete the imported OMT.
 
 ### Changed
 - A default config file is created in OmegaT config directory if none was present.

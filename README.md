@@ -38,6 +38,11 @@ open-directory-after-export=false
 # creating the package. (default: false)
 generate-target-files=false
 
+# If set to true, a dialog asking the user if they want to delete the
+# imported OMT package will appear at the end of the importation.
+# (default: false)
+prompt-remove-omt-after-import=false
+
 # If this property is set, the script located in the OmegaT scripts
 # folder will be executed. The OMT package file is available in the
 # binding "omtPackageFile". The console output is done in OmegaT
