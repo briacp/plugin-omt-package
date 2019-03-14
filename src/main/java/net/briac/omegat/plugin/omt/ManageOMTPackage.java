@@ -20,6 +20,7 @@
  **************************************************************************/
 package net.briac.omegat.plugin.omt;
 
+import org.apache.commons.io.FileUtils;
 import org.omegat.core.Core;
 import org.omegat.core.CoreEvents;
 import org.omegat.core.data.ProjectProperties;
@@ -27,10 +28,10 @@ import org.omegat.core.events.IApplicationEventListener;
 import org.omegat.gui.main.IMainMenu;
 import org.omegat.gui.main.IMainWindow;
 import org.omegat.gui.main.ProjectUICommands;
-import org.omegat.util.FileUtil;
-import org.omegat.util.Log;
-import org.omegat.util.OConsts;
-import org.omegat.util.StaticUtils;
+import org.omegat.gui.scripting.IScriptLogger;
+import org.omegat.gui.scripting.ScriptItem;
+import org.omegat.gui.scripting.ScriptRunner;
+import org.omegat.util.*;
 import org.omegat.util.gui.OmegaTFileChooser;
 import org.omegat.util.gui.UIThreadsUtil;
 import org.openide.awt.Mnemonics;
@@ -44,6 +45,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.*;
+import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
@@ -51,6 +53,8 @@ import java.util.zip.ZipOutputStream;
 import static org.omegat.core.Core.getMainWindow;
 
 public class ManageOMTPackage {
+
+    public static final String PROPERTY_POST_PACKAGE_SCRIPT = "post-package-script";
 
     public static final String OMT_EXTENSION = ".omt";
     public static final String IGNORE_FILE = ".empty";
@@ -60,6 +64,7 @@ public class ManageOMTPackage {
     public static final String DEFAULT_EXCLUDE = "\\.(zip|bak|omt)$";
     public static final String PROPERTY_OPEN_DIR = "open-directory-after-export";
     public static final String PROPERTY_GENERATE_TARGET = "generate-target-files";
+    private static final Logger LOGGER = Logger.getLogger(ManageOMTPackage.class.getName());
 
     protected static final ResourceBundle res = ResourceBundle.getBundle("omt-package", Locale.getDefault());
 
@@ -253,16 +258,24 @@ public class ManageOMTPackage {
     private static void loadPluginProps() {
         pluginProps = new Properties();
         File propFile = new File(StaticUtils.getConfigDir(), CONFIG_FILE);
-        if (propFile.exists()) {
-            try (FileInputStream inStream = new FileInputStream(propFile)) {
-                pluginProps.load(inStream);
-                System.out.println("OMT App Plugin Properties");
-                pluginProps.list(System.out);
+        if (!propFile.exists()) {
+            Log.logDebug(LOGGER, "No app plugin properties [{0}], creating one...", propFile.getAbsolutePath());
+            try {
+                FileUtils.copyInputStreamToFile(
+                        ManageOMTPackage.class.getResourceAsStream("/" + CONFIG_FILE),
+                        propFile
+                );
             } catch (IOException e) {
-                Log.log(String.format("Could not load plugin property file \"%s\"", propFile.getAbsolutePath()));
+                Log.log(e);
+                return;
             }
-        } else {
-            System.out.println(String.format("No app plugin properties \"%s\"", propFile.getAbsolutePath()));
+        }
+        try (FileInputStream inStream = new FileInputStream(propFile)) {
+            pluginProps.load(inStream);
+            Log.logDebug(LOGGER, "OMT App Plugin Properties");
+            pluginProps.list(System.out);
+        } catch (IOException e) {
+            Log.log(String.format("Could not load plugin property file \"%s\"", propFile.getAbsolutePath()));
         }
 
         if (!Core.getProject().isProjectLoaded()) {
@@ -274,13 +287,13 @@ public class ManageOMTPackage {
         if (propFile.exists()) {
             try (FileInputStream inStream = new FileInputStream(propFile)) {
                 pluginProps.load(inStream);
-                System.out.println("OMT Project Plugin Properties");
+                Log.logDebug(LOGGER, "OMT Project Plugin Properties");
                 pluginProps.list(System.out);
             } catch (IOException e) {
                 Log.log(String.format("Could not load project plugin property file \"%s\"", propFile.getAbsolutePath()));
             }
         } else {
-            System.out.println(String.format("No project plugin propeties \"%s\"", propFile.getAbsolutePath()));
+            Log.logDebug(LOGGER, "No project plugin properties [{0}]", propFile.getAbsolutePath());
         }
     }
 
@@ -377,12 +390,50 @@ public class ManageOMTPackage {
             addZipDir(out, null, path, props, filter);
         }
 
+        String postPackageScript = pluginProps.getProperty(PROPERTY_POST_PACKAGE_SCRIPT);
+        if (postPackageScript != null) {
+            runScript(new File(Preferences.getPreference(Preferences.SCRIPTS_DIRECTORY), postPackageScript));
+        }
+
         JOptionPane.showMessageDialog(
                 getMainWindow().getApplicationFrame(),
                 res.getString("omt.dialog.overwrite_package.created"),
                 res.getString("omt.dialog.overwrite_package.created.title"),
                 JOptionPane.INFORMATION_MESSAGE
         );
+    }
+
+    private static void runScript(File scriptFile) {
+        if (scriptFile.isFile() && scriptFile.exists()) {
+            HashMap<String, Object> bindings = new HashMap<>();
+            bindings.put("omtPackageFile", scriptFile);
+
+            bindings.put(ScriptRunner.VAR_CONSOLE, new IScriptLogger() {
+                @Override
+                public void print(Object o) {
+                    Log.log(o.toString());
+                }
+
+                @Override
+                public void println(Object o) {
+                    Log.log(o.toString());
+                }
+
+                @Override
+                public void clear() {
+                    /* empty */
+                }
+            });
+
+            try {
+                String result = ScriptRunner.executeScript(new ScriptItem(scriptFile), bindings);
+                Log.log(result);
+            } catch (Exception ex) {
+                Log.log(ex);
+            }
+        } else {
+            Log.log(String.format("No script file \"%s\".", scriptFile.getAbsolutePath()));
+        }
     }
 
     private static final void addZipDir(final ZipOutputStream out, final Path root, final Path dir,
@@ -407,7 +458,7 @@ public class ManageOMTPackage {
                     } catch (Exception e) {
                         throw new IOException(e);
                     }
-                    Log.log(String.format("addZipDir\tproject\t[%s]", OConsts.FILE_PROJECT));
+                    Log.logDebug(LOGGER, "addZipDir\tproject\t[{0}]", OConsts.FILE_PROJECT);
                     out.putNextEntry(new ZipEntry(OConsts.FILE_PROJECT));
                     Files.copy(Paths.get(tmpProjectFile.getAbsolutePath()), out);
                     out.closeEntry();
@@ -424,13 +475,13 @@ public class ManageOMTPackage {
                     // empty dirs.
                     if (child.toFile().listFiles().length == 0) {
                         String emptyDirFile = entry.toString() + File.separatorChar + IGNORE_FILE;
-                        Log.log(String.format("addZipDir\tempty\t[%s]", emptyDirFile));
+                        Log.logDebug(LOGGER, "addZipDir\tempty\t[{0}]", emptyDirFile);
                         out.putNextEntry(new ZipEntry(emptyDirFile));
                         out.closeEntry();
                     }
                     addZipDir(out, entry, child, props, filter);
                 } else {
-                    Log.log(String.format("addZipDir\tfile\t[%s]", entry));
+                    Log.logDebug(LOGGER, "addZipDir\tfile\t[{0}]", entry);
                     out.putNextEntry(new ZipEntry(entry.toString()));
                     Files.copy(child, out);
                     out.closeEntry();

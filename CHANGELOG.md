@@ -1,5 +1,13 @@
 # Change Log
 
+## [v1.0.3]
+
+### Add
+- Property "post-package-script" to execute a script after the package creation.
+
+### Changed
+- A default config file is created in OmegaT config directory if none was present.
+
 ## [v1.0.2]
 
 ### Add
