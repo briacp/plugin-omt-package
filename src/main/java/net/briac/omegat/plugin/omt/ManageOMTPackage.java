@@ -240,9 +240,12 @@ public class ManageOMTPackage {
 
                 mainWindow.showStatusMessageRB("MW_STATUS_SAVING");
 
+                Core.executeExclusively(true, () -> {
+                    Core.getProject().saveProject(true);
+                });
+                
                 if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_GENERATE_TARGET, "false"))) {
                     Core.executeExclusively(true, () -> {
-                        Core.getProject().saveProject(true);
                         try {
                             Core.getProject().compileProject(".*");
                         } catch (Exception ex) {
@@ -496,13 +499,13 @@ public class ManageOMTPackage {
                     if (child.toFile().listFiles().length == 0) {
                         String emptyDirFile = entry.toString() + File.separatorChar + IGNORE_FILE;
                         Log.logDebug(LOGGER, "addZipDir\tempty\t[{0}]", emptyDirFile);
-                        out.putNextEntry(new ZipEntry(emptyDirFile));
+                        out.putNextEntry(new ZipEntry(emptyDirFile.replace("\\", "/")));
                         out.closeEntry();
                     }
                     addZipDir(out, entry, child, props, filter);
                 } else {
                     Log.logDebug(LOGGER, "addZipDir\tfile\t[{0}]", entry);
-                    out.putNextEntry(new ZipEntry(entry.toString()));
+                    out.putNextEntry(new ZipEntry(entry.toString().replace("\\", "/")));
                     Files.copy(child, out);
                     out.closeEntry();
                 }

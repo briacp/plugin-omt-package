@@ -1,5 +1,12 @@
 # Change Log
 
+## [v1.0.4]
+
+### Changed
+- The project is always saved before exporting a package.
+- Make sure the path in the zipped entries contains "/" instead of "\".  
+
+
 ## [v1.0.3]
 
 ### Add
