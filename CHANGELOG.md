@@ -1,5 +1,9 @@
 # Change Log
 
+## [v1.0.5]
+
+- Avoid errors during `onProjectStatusChanged`, as the OMT menus could sometime not be present.
+
 ## [v1.0.4]
 
 ### Changed

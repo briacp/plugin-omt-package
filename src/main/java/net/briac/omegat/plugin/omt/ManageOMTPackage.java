@@ -117,8 +117,12 @@ public class ManageOMTPackage {
     }
 
     private static void onProjectStatusChanged(boolean isProjectLoaded) {
-        exportOMT.setEnabled(isProjectLoaded);
-        importOMT.setEnabled(!isProjectLoaded);
+        if (exportOMT != null) {
+            exportOMT.setEnabled(isProjectLoaded);
+        }
+        if (importOMT != null) {
+            importOMT.setEnabled(!isProjectLoaded);
+        }
     }
 
     public static void projectImportOMT() {
