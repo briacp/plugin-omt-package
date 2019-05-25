@@ -383,7 +383,8 @@ public class ManageOMTPackage {
             if (e.isDirectory()) {
                 outFile.mkdirs();
             } else {
-                if (e.getName().equals(IGNORE_FILE)) {
+                if (outFile.getName().equals(IGNORE_FILE)) {
+                    outFile.getParentFile().mkdirs(); 
                     continue;
                 }
                 try (InputStream in = zip.getInputStream(e)) {
