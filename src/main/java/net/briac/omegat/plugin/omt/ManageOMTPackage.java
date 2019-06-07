@@ -72,7 +72,35 @@ public class ManageOMTPackage {
     private static JMenuItem importOMT;
     private static JMenuItem exportOMT;
 
+    private static boolean cliMode = false;
+
     private static Properties pluginProps = new Properties();
+
+    public static void main(String[] args) throws Exception {
+        if (args.length == 0) {
+            System.out.println("ManageOMTPackage omegat_project_path [omt_package_file]");
+            System.exit(2);
+        }
+
+        Log.log(res.getString("omt.menu.export"));
+
+        String project = args[0];
+        File projectDir = new File(project);
+        if (!projectDir.exists()) {
+            throw new FileNotFoundException();
+        }
+
+        File omtFile = null;
+        if (args.length > 1) {
+            omtFile = new File(args[1]);
+        } else {
+            omtFile = new File(projectDir.getParentFile(), projectDir.getName() + OMT_EXTENSION);
+        }
+
+        cliMode = true;
+        ProjectProperties props = new ProjectProperties(projectDir);
+        createOmt(omtFile, props);
+    }
 
     public static void loadPlugins() {
 
@@ -384,7 +412,7 @@ public class ManageOMTPackage {
                 outFile.mkdirs();
             } else {
                 if (outFile.getName().equals(IGNORE_FILE)) {
-                    outFile.getParentFile().mkdirs(); 
+                    outFile.getParentFile().mkdirs();
                     continue;
                 }
                 try (InputStream in = zip.getInputStream(e)) {
@@ -423,12 +451,14 @@ public class ManageOMTPackage {
             runScript(new File(Preferences.getPreference(Preferences.SCRIPTS_DIRECTORY), postPackageScript));
         }
 
-        JOptionPane.showMessageDialog(
-                getMainWindow().getApplicationFrame(),
+        if (cliMode) {
+            Log.log(res.getString("omt.dialog.overwrite_package.created"));
+            return;
+        }
+
+        JOptionPane.showMessageDialog(getMainWindow().getApplicationFrame(),
                 res.getString("omt.dialog.overwrite_package.created"),
-                res.getString("omt.dialog.overwrite_package.created.title"),
-                JOptionPane.INFORMATION_MESSAGE
-        );
+                res.getString("omt.dialog.overwrite_package.created.title"), JOptionPane.INFORMATION_MESSAGE);
     }
 
     private static void runScript(File scriptFile) {

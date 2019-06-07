@@ -50,7 +50,8 @@ jar {
         attributes(
                 "OmegaT-Plugins": pluginMainClass,
                 "Plugin-Version": version,
-                "Plugin-Name": pluginName
+                "Plugin-Name": pluginName,
+                "Main-Class": pluginMainClass
         )
     }
 }
