@@ -50,6 +50,12 @@ prompt-remove-omt-after-import=false
 #post-package-script=processOmtPackage.groovy
 ```
 
+## Command-line
+
+The packages can also be created directly with the command line:
+
+`java -cp path/to/OmegaT.jar:/path/to/plugin-omt-package-1.0.7.jar net.briac.omegat.plugin.omt.ManageOMTPackage /path/to/project /path/to/omt_file`
+
 ## Sponsor
 
 Thanks a lot to [cApStAn](http://www.capstan.be/) for sponsoring the development of this plugin.
