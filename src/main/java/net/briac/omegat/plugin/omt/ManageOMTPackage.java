@@ -98,7 +98,7 @@ public class ManageOMTPackage {
         }
 
         cliMode = true;
-
+        loadPluginProps();
         // Correctly load the project properties
         ProjectProperties props = org.omegat.util.ProjectFileStorage.loadProjectProperties(projectDir);
         createOmt(omtFile, props);
@@ -335,7 +335,7 @@ public class ManageOMTPackage {
             Log.log(String.format("Could not load plugin property file \"%s\"", propFile.getAbsolutePath()));
         }
 
-        if (!Core.getProject().isProjectLoaded()) {
+        if (Core.getProject() == null || !Core.getProject().isProjectLoaded()) {
             // No project specific properties!
             return;
         }
