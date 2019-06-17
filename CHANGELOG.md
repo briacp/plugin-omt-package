@@ -1,9 +1,13 @@
 # Change Log
 
+## [v1.0.8]
+
+- Fixed a bug in CLI mode where the project paths were not correctly set
+- Correctly load all project properties in CLI mode.
+
 ## [v1.0.7]
 
 - Added a CLI mode to create packages without launching OmegaT.
-
 
 ## [v1.0.6]
 
