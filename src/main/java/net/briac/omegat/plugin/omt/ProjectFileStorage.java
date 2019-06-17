@@ -30,6 +30,7 @@ import org.omegat.util.OConsts;
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.Marshaller;
 import java.io.File;
+import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
@@ -98,8 +99,9 @@ public class ProjectFileStorage {
         m.marshal(om, outFile);
     }
 
-    private static String getPathForStoring(String root, String absolutePath, String defaultName) {
-        if (defaultName != null && new File(absolutePath).equals(new File(root, defaultName))) {
+    private static String getPathForStoring(String root, String absolutePath, String defaultName) throws IOException {
+        if (defaultName != null
+                && new File(absolutePath).getCanonicalPath().equals(new File(root, defaultName).getCanonicalPath())) {
             return org.omegat.util.ProjectFileStorage.DEFAULT_FOLDER_MARKER;
         }
 
