@@ -98,7 +98,9 @@ public class ManageOMTPackage {
         }
 
         cliMode = true;
-        ProjectProperties props = new ProjectProperties(projectDir);
+
+        // Correctly load the project properties
+        ProjectProperties props = org.omegat.util.ProjectFileStorage.loadProjectProperties(projectDir);
         createOmt(omtFile, props);
     }
 
@@ -433,7 +435,7 @@ public class ManageOMTPackage {
     public static void createOmt(final File omtZip, final ProjectProperties props) throws Exception {
         Path path = Paths.get(props.getProjectRootDir().getAbsolutePath());
         if (!Files.isDirectory(path)) {
-            throw new IllegalArgumentException("Path must be a directory.");
+            throw new IllegalArgumentException("Path \"" + path + "\" must be a directory.");
         }
 
         List<String> listExcludes = Arrays.asList(pluginProps.getProperty(PROPERTY_EXCLUDE, DEFAULT_EXCLUDE).split(";"));
