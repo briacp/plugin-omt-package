@@ -1,5 +1,10 @@
 # Change Log
 
+## [v1.0.9]
+
+- Ignore .repositories directory by default
+- Load the configuration properties in CLI mode
+
 ## [v1.0.8]
 
 - Fixed a bug in CLI mode where the project paths were not correctly set
