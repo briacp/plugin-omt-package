@@ -54,7 +54,15 @@ prompt-remove-omt-after-import=false
 
 The packages can also be created directly with the command line:
 
-`java -cp path/to/OmegaT.jar:/path/to/plugin-omt-package-1.0.7.jar net.briac.omegat.plugin.omt.ManageOMTPackage /path/to/project /path/to/omt_file`
+```
+java -cp path/to/OmegaT.jar:/path/to/plugin-omt-package-1.1.0.jar net.briac.omegat.plugin.omt.ManageOMTPackage /path/to/project /path/to/omt_file`
+
+usage: ManageOMTPackage [options] omegat-project-directory [omt-package-file]
+ -c,--config <property-file>   use given file for configuration (default: /home/user/.omegat/omt-package-config.properties)
+ -h,--help                     print this message
+ -q,--quiet                    be extra quiet
+ -v,--verbose                  be extra verbose
+ ```
 
 ## Sponsor
 
