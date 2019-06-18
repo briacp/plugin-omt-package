@@ -1,12 +1,11 @@
 package net.briac.omegat.plugin.omt;
 
-import org.omegat.util.Log;
-
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Level;
 import java.util.regex.Pattern;
 
 public class DirectoryFilter implements DirectoryStream.Filter<Path> {
@@ -24,7 +23,7 @@ public class DirectoryFilter implements DirectoryStream.Filter<Path> {
         //Log.log(String.format("filter\tentry:[%s]", entry));
         for (Pattern excludePattern : excludePatterns) {
             if (excludePattern.matcher(entry.toString()).find()) {
-                Log.log(String.format("Excluded\t%s", entry));
+                ManageOMTPackage.LOGGER.log(Level.FINE, String.format("Excluded\t%s", entry));
                 return false;
             }
         }

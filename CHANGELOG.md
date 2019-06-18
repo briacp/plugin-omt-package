@@ -1,5 +1,18 @@
 # Change Log
 
+## [v1.1.0]
+
+- Added proper command-line parsing (with groovyjarjarcommonscli already included in OmegaT to avoid an external dependency)
+- The path to the configuration file can be specified as a CLI option
+
+```
+usage: ManageOMTPackage [options] omegat-project-directory [omt-package-file]
+ -c,--config <property-file>   use given file for configuration (default: /home/user/.omegat/omt-package-config.properties)
+ -h,--help                     print this message
+ -q,--quiet                    be extra quiet
+ -v,--verbose                  be extra verbose
+```
+
 ## [v1.0.9]
 
 - Ignore .repositories directory by default

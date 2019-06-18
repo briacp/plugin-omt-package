@@ -21,6 +21,14 @@
 package net.briac.omegat.plugin.omt;
 
 import org.apache.commons.io.FileUtils;
+import groovyjarjarcommonscli.CommandLine;
+import groovyjarjarcommonscli.CommandLineParser;
+import groovyjarjarcommonscli.BasicParser;
+import groovyjarjarcommonscli.HelpFormatter;
+import groovyjarjarcommonscli.OptionBuilder;
+import groovyjarjarcommonscli.Option;
+import groovyjarjarcommonscli.Options;
+import groovyjarjarcommonscli.ParseException;
 import org.omegat.core.Core;
 import org.omegat.core.CoreEvents;
 import org.omegat.core.data.ProjectProperties;
@@ -45,6 +53,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.*;
+import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -65,7 +74,7 @@ public class ManageOMTPackage {
     public static final String PROPERTY_OPEN_DIR = "open-directory-after-export";
     public static final String PROPERTY_GENERATE_TARGET = "generate-target-files";
     public static final String PROPERTY_PROMPT_DELETE_IMPORT = "prompt-remove-omt-after-import";
-    private static final Logger LOGGER = Logger.getLogger(ManageOMTPackage.class.getName());
+    protected static final Logger LOGGER = Logger.getLogger(ManageOMTPackage.class.getName());
 
     protected static final ResourceBundle res = ResourceBundle.getBundle("omt-package", Locale.getDefault());
 
@@ -76,32 +85,107 @@ public class ManageOMTPackage {
 
     private static Properties pluginProps = new Properties();
 
+    @SuppressWarnings("static-access")
     public static void main(String[] args) throws Exception {
+        File configFile = new File(StaticUtils.getConfigDir(), CONFIG_FILE);
+        String projectDirectoryName = null;
+        String omtFilename = null;
+
+        cliMode = true;
+
+        // Parse the CLI options
+        Options options = new Options();
+        Option configOpt = OptionBuilder
+                .withLongOpt("config")
+                .withArgName("property-file")
+                .hasArg()
+                .withDescription("use given file for configuration (default: " + configFile + ")")
+                .withType(String.class)
+                .create('c');
+
+        Option configVerbose = OptionBuilder
+                .withLongOpt("verbose")
+                .withDescription("be extra verbose")
+                .create('v');
+
+        Option configQuiet = OptionBuilder
+                .withLongOpt("quiet")
+                .withDescription("be extra quiet")
+                .create('q');
+
+        Option configHelp = OptionBuilder
+                .withLongOpt("help")
+                .withDescription("print this message")
+                .create('h');
+
+        options.addOption(configOpt);
+        options.addOption(configHelp);
+        options.addOption(configVerbose);
+        options.addOption(configQuiet);
+
         if (args.length == 0) {
-            System.out.println("ManageOMTPackage omegat_project_path [omt_package_file]");
-            System.exit(2);
+            printCliHelp(options);
         }
 
-        Log.log(res.getString("omt.menu.export"));
+        CommandLineParser parser = new BasicParser();
+        try {
+            // parse the command line arguments
+            CommandLine commandLine = parser.parse(options, args);
 
-        String project = args[0];
-        File projectDir = new File(project);
-        if (!projectDir.exists()) {
-            throw new FileNotFoundException();
+            if (commandLine.hasOption("config")) {
+                configFile = new File(commandLine.getOptionValue("config"));
+            }
+
+            if (commandLine.hasOption("verbose")) {
+                Log.setLevel(Level.FINE);
+                LOGGER.setLevel(Level.FINE);
+            }
+            if (commandLine.hasOption("quiet")) {
+                Log.setLevel(Level.OFF);
+            }
+            if (commandLine.hasOption("help")) {
+                printCliHelp(options);
+            }
+
+            String[] remainder = commandLine.getArgs();
+            if (remainder == null || remainder.length == 0) {
+                printCliHelp(options);
+            }
+            projectDirectoryName = remainder[0];
+
+            if (remainder.length == 2) {
+                omtFilename = remainder[1];
+            }
+        } catch (ParseException exp) {
+            System.err.println("Invalid command line: " + exp.getMessage());
+            System.exit(3);
+        }
+
+        File projectDir = new File(projectDirectoryName);
+        if (!projectDir.exists() || !projectDir.canRead() || !projectDir.isDirectory()) {
+            System.err.println("The omegat-project-directory must be a valid directory");
+            System.exit(4);
         }
 
         File omtFile = null;
-        if (args.length > 1) {
-            omtFile = new File(args[1]);
+        if (omtFilename != null) {
+            omtFile = new File(omtFilename);
         } else {
             omtFile = new File(projectDir.getParentFile(), projectDir.getName() + OMT_EXTENSION);
         }
 
-        cliMode = true;
-        loadPluginProps();
+        Log.log(res.getString("omt.menu.export"));
+        loadPluginProps(configFile);
         // Correctly load the project properties
         ProjectProperties props = org.omegat.util.ProjectFileStorage.loadProjectProperties(projectDir);
         createOmt(omtFile, props);
+    }
+
+    private static void printCliHelp(Options options) {
+        HelpFormatter formatter = new HelpFormatter();
+        formatter.setWidth(150);
+        formatter.printHelp("ManageOMTPackage [options] omegat-project-directory [omt-package-file]", options, false);
+        System.exit(2);
     }
 
     public static void loadPlugins() {
@@ -277,7 +361,7 @@ public class ManageOMTPackage {
                 Core.executeExclusively(true, () -> {
                     Core.getProject().saveProject(true);
                 });
-                
+
                 if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_GENERATE_TARGET, "false"))) {
                     Core.executeExclusively(true, () -> {
                         try {
@@ -313,15 +397,17 @@ public class ManageOMTPackage {
     }
 
     private static void loadPluginProps() {
+        loadPluginProps(new File(StaticUtils.getConfigDir(), CONFIG_FILE));
+    }
+
+    private static void loadPluginProps(File propFile) {
         pluginProps = new Properties();
-        File propFile = new File(StaticUtils.getConfigDir(), CONFIG_FILE);
+
         if (!propFile.exists()) {
             Log.logDebug(LOGGER, "No app plugin properties [{0}], creating one...", propFile.getAbsolutePath());
             try {
-                FileUtils.copyInputStreamToFile(
-                        ManageOMTPackage.class.getResourceAsStream("/" + CONFIG_FILE),
-                        propFile
-                );
+                FileUtils.copyInputStreamToFile(ManageOMTPackage.class.getResourceAsStream("/" + CONFIG_FILE),
+                        propFile);
             } catch (IOException e) {
                 Log.log(e);
                 return;
@@ -330,7 +416,9 @@ public class ManageOMTPackage {
         try (FileInputStream inStream = new FileInputStream(propFile)) {
             pluginProps.load(inStream);
             Log.logDebug(LOGGER, "OMT App Plugin Properties");
-            pluginProps.list(System.out);
+            if (LOGGER.isLoggable(Level.FINE)) {
+                pluginProps.list(System.out);   
+            }
         } catch (IOException e) {
             Log.log(String.format("Could not load plugin property file \"%s\"", propFile.getAbsolutePath()));
         }
@@ -443,7 +531,7 @@ public class ManageOMTPackage {
         DirectoryStream.Filter<Path> filter = new DirectoryFilter(listExcludes);
 
         BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(omtZip));
-        Log.log(String.format("Zipping to file [%s]", omtZip.getAbsolutePath()));
+        Log.log(String.format("Zipping project [%s] to file [%s]", path, omtZip.getAbsolutePath()));
         try (ZipOutputStream out = new ZipOutputStream(bos)) {
             addZipDir(out, null, path, props, filter);
         }
