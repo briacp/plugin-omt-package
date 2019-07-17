@@ -1,5 +1,9 @@
 # Change Log
 
+## [v1.2.0]
+
+- Upgraded to OmegaT 4.3.0.
+
 ## [v1.1.0]
 
 - Added proper command-line parsing (with groovyjarjarcommonscli already included in OmegaT to avoid an external dependency)
