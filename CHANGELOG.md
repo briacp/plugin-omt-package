@@ -1,5 +1,9 @@
 # Change Log
 
+## [v1.2.1]
+
+- Create `.empty` file when a directory containing only excluded file is empty.
+
 ## [v1.2.0]
 
 - Upgraded to OmegaT 4.3.0.

@@ -532,9 +532,11 @@ public class ManageOMTPackage {
 
         BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(omtZip));
         Log.log(String.format("Zipping project [%s] to file [%s]", path, omtZip.getAbsolutePath()));
+        int addedFiles = 0;
         try (ZipOutputStream out = new ZipOutputStream(bos)) {
-            addZipDir(out, null, path, props, filter);
+            addedFiles = addZipDir(out, null, path, props, filter);
         }
+        Log.log(String.format("Added %s files to the Zip.", addedFiles));
 
         String postPackageScript = pluginProps.getProperty(PROPERTY_POST_PACKAGE_SCRIPT);
         if (postPackageScript != null) {
@@ -584,8 +586,9 @@ public class ManageOMTPackage {
         }
     }
 
-    private static final void addZipDir(final ZipOutputStream out, final Path root, final Path dir,
+    private static final int addZipDir(final ZipOutputStream out, final Path root, final Path dir,
                                         final ProjectProperties props, DirectoryStream.Filter<Path> filter) throws IOException {
+        int addedFiles = 0;
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, filter)) {
             for (Path child : stream) {
                 final Path childPath = child.getFileName();
@@ -609,6 +612,7 @@ public class ManageOMTPackage {
                     Log.logDebug(LOGGER, "addZipDir\tproject\t[{0}]", OConsts.FILE_PROJECT);
                     out.putNextEntry(new ZipEntry(OConsts.FILE_PROJECT));
                     Files.copy(Paths.get(tmpProjectFile.getAbsolutePath()), out);
+                    addedFiles++;
                     out.closeEntry();
                     boolean isTmpDeleted = tmpProjectFile.delete();
                     if (!isTmpDeleted) {
@@ -621,21 +625,33 @@ public class ManageOMTPackage {
                 if (Files.isDirectory(child)) {
                     // Before recursing, we add a ZipEntry for the directory to allow
                     // empty dirs.
-                    if (child.toFile().listFiles().length == 0) {
-                        String emptyDirFile = entry.toString() + File.separatorChar + IGNORE_FILE;
-                        Log.logDebug(LOGGER, "addZipDir\tempty\t[{0}]", emptyDirFile);
-                        out.putNextEntry(new ZipEntry(emptyDirFile.replace("\\", "/")));
-                        out.closeEntry();
+                    boolean emptyDir = child.toFile().listFiles().length == 0;
+                    if (emptyDir) {
+                        createEmptyFile(out, entry);
                     }
-                    addZipDir(out, entry, child, props, filter);
+                    int added = addZipDir(out, entry, child, props, filter);
+                    if (!emptyDir && added == 0)
+                    {
+                        createEmptyFile(out, entry);
+                    }
+                    addedFiles += added;
                 } else {
                     Log.logDebug(LOGGER, "addZipDir\tfile\t[{0}]", entry);
                     out.putNextEntry(new ZipEntry(entry.toString().replace("\\", "/")));
                     Files.copy(child, out);
+                    addedFiles++;
                     out.closeEntry();
                 }
             }
         }
+        return addedFiles;
+    }
+
+    private static void createEmptyFile(final ZipOutputStream out, Path entry) throws IOException {
+        String emptyDirFile = entry.toString() + File.separatorChar + IGNORE_FILE;
+        Log.logDebug(LOGGER, "createEmptyFile\t[{0}]", emptyDirFile);
+        out.putNextEntry(new ZipEntry(emptyDirFile.replace("\\", "/")));
+        out.closeEntry();
     }
 
 }
