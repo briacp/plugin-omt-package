@@ -29,23 +29,29 @@ import org.omegat.util.OConsts;
 
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.Marshaller;
+import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter.DEFAULT;
+
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
+//import org.omegat.util.ProjectFileStorage.DEFAULT_FOLDER_MARKER;
+
 /**
- * Copy of org.omegat.util.ProjectFileStorage just to be able to create an project.properties.
+ * Copy of org.omegat.util.ProjectFileStorage just to be able to create an
+ * project.properties.
  * <p>
- * If/When the OMT is included in the main app, this class will be deprecated by adding a method such as
+ * If/When the OMT is included in the main app, this class will be deprecated by
+ * adding a method such as
  * <p>
  * public static void writeProjectFile(ProjectProperties props)throws Exception{
  * File outFile=new File(props.getProjectRoot(),OConsts.FILE_PROJECT);
- * writeProjectFile(props,outFile);
- * }
+ * writeProjectFile(props,outFile); }
  */
 public class ProjectFileStorage {
     private static final JAXBContext CONTEXT;
+    private static final String DEFAULT_FOLDER_MARKER = org.omegat.util.ProjectFileStorage.DEFAULT_FOLDER_MARKER;
 
     static {
         try {
@@ -73,9 +79,11 @@ public class ProjectFileStorage {
 
         // Compute glossary file location: must be relative to glossary root
         String glossaryFile = getPathForStoring(props.getGlossaryRoot(), props.getWriteableGlossary(), null);
-        if (glossaryDir.equalsIgnoreCase(org.omegat.util.ProjectFileStorage.DEFAULT_FOLDER_MARKER) && props.isDefaultWriteableGlossaryFile()) {
-            // Everything equals to default
-            glossaryFile = org.omegat.util.ProjectFileStorage.DEFAULT_FOLDER_MARKER;
+
+        // The method props.isDefaultWriteableGlossaryFile() doesn't work well on WSL
+        if (glossaryDir.equalsIgnoreCase(DEFAULT_FOLDER_MARKER)
+                && new File(glossaryFile).getName().equals(OConsts.DEFAULT_W_GLOSSARY)) {
+            glossaryFile = DEFAULT_FOLDER_MARKER;
         }
         om.getProject().setGlossaryFile(glossaryFile);
 
@@ -102,7 +110,7 @@ public class ProjectFileStorage {
     private static String getPathForStoring(String root, String absolutePath, String defaultName) throws IOException {
         if (defaultName != null
                 && new File(absolutePath).getCanonicalPath().equals(new File(root, defaultName).getCanonicalPath())) {
-            return org.omegat.util.ProjectFileStorage.DEFAULT_FOLDER_MARKER;
+            return DEFAULT_FOLDER_MARKER;
         }
 
         // Fall back to using the input path if all else fails.
@@ -125,8 +133,8 @@ public class ProjectFileStorage {
 
     /**
      * Replace \ with / and remove / from the end if present. Within OmegaT we
-     * generally require a / on the end of directories, but for storage we
-     * prefer no trailing /.
+     * generally require a / on the end of directories, but for storage we prefer no
+     * trailing /.
      */
     static String normalizeSlashes(String path) {
         return withoutTrailingSlash(path.replace('\\', '/'));
