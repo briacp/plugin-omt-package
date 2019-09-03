@@ -3,6 +3,7 @@
 ## [v1.2.1]
 
 - Create `.empty` file when a directory containing only excluded file is empty.
+- Fixed default glossary file detection.
 
 ## [v1.2.0]
 
