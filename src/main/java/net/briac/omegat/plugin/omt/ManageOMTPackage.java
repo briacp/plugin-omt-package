@@ -20,15 +20,44 @@
  **************************************************************************/
 package net.briac.omegat.plugin.omt;
 
+import static org.omegat.core.Core.getMainWindow;
+
+import java.awt.Cursor;
+import java.awt.Desktop;
+import java.io.BufferedOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.DirectoryStream;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.Enumeration;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Locale;
+import java.util.Properties;
+import java.util.ResourceBundle;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.logging.Level;
+import java.util.logging.Logger;
+import java.util.zip.ZipEntry;
+import java.util.zip.ZipFile;
+import java.util.zip.ZipOutputStream;
+
+import javax.swing.JMenu;
+import javax.swing.JMenuItem;
+import javax.swing.JOptionPane;
+import javax.swing.JPopupMenu;
+import javax.swing.SwingUtilities;
+import javax.swing.SwingWorker;
+
 import org.apache.commons.io.FileUtils;
-import groovyjarjarcommonscli.CommandLine;
-import groovyjarjarcommonscli.CommandLineParser;
-import groovyjarjarcommonscli.BasicParser;
-import groovyjarjarcommonscli.HelpFormatter;
-import groovyjarjarcommonscli.OptionBuilder;
-import groovyjarjarcommonscli.Option;
-import groovyjarjarcommonscli.Options;
-import groovyjarjarcommonscli.ParseException;
 import org.omegat.core.Core;
 import org.omegat.core.CoreEvents;
 import org.omegat.core.data.ProjectProperties;
@@ -39,28 +68,25 @@ import org.omegat.gui.main.ProjectUICommands;
 import org.omegat.gui.scripting.IScriptLogger;
 import org.omegat.gui.scripting.ScriptItem;
 import org.omegat.gui.scripting.ScriptRunner;
-import org.omegat.util.*;
+import org.omegat.util.FileUtil;
+import org.omegat.util.Log;
+import org.omegat.util.OConsts;
+import org.omegat.util.Preferences;
+import org.omegat.util.StaticUtils;
 import org.omegat.util.gui.OmegaTFileChooser;
 import org.omegat.util.gui.UIThreadsUtil;
 import org.openide.awt.Mnemonics;
 
-import javax.swing.*;
-import java.awt.*;
-import java.io.*;
-import java.nio.file.DirectoryStream;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.util.List;
-import java.util.*;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.util.zip.ZipEntry;
-import java.util.zip.ZipFile;
-import java.util.zip.ZipOutputStream;
+import groovyjarjarcommonscli.BasicParser;
+import groovyjarjarcommonscli.CommandLine;
+import groovyjarjarcommonscli.CommandLineParser;
+import groovyjarjarcommonscli.HelpFormatter;
+import groovyjarjarcommonscli.Option;
+import groovyjarjarcommonscli.OptionBuilder;
+import groovyjarjarcommonscli.Options;
+import groovyjarjarcommonscli.ParseException;
 
-import static org.omegat.core.Core.getMainWindow;
-
+@SuppressWarnings("deprecation")
 public class ManageOMTPackage {
 
     public static final String PROPERTY_POST_PACKAGE_SCRIPT = "post-package-script";
@@ -78,6 +104,8 @@ public class ManageOMTPackage {
 
     protected static final ResourceBundle res = ResourceBundle.getBundle("omt-package", Locale.getDefault());
 
+    private static final ReentrantLock EXCLUSIVE_RUN_LOCK = new ReentrantLock();
+    
     private static JMenuItem importOMT;
     private static JMenuItem exportOMT;
 
@@ -85,7 +113,7 @@ public class ManageOMTPackage {
 
     private static Properties pluginProps = new Properties();
 
-    @SuppressWarnings("static-access")
+    @SuppressWarnings({ "static-access" })
     public static void main(String[] args) throws Exception {
         File configFile = new File(StaticUtils.getConfigDir(), CONFIG_FILE);
         String projectDirectoryName = null;
@@ -357,13 +385,12 @@ public class ManageOMTPackage {
                 mainWindow.setCursor(hourglassCursor);
 
                 mainWindow.showStatusMessageRB("MW_STATUS_SAVING");
-
-                Core.executeExclusively(true, () -> {
+                ManageOMTPackage.executeExclusively(true, () -> {
                     Core.getProject().saveProject(true);
                 });
 
                 if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_GENERATE_TARGET, "false"))) {
-                    Core.executeExclusively(true, () -> {
+                    ManageOMTPackage.executeExclusively(true, () -> {
                         try {
                             Core.getProject().compileProject(".*");
                         } catch (Exception ex) {
@@ -652,6 +679,35 @@ public class ManageOMTPackage {
         Log.logDebug(LOGGER, "createEmptyFile\t[{0}]", emptyDirFile);
         out.putNextEntry(new ZipEntry(emptyDirFile.replace("\\", "/")));
         out.closeEntry();
+    }
+    
+    
+    /** This is copied from org.omegat.core.Core.executeExclusively(boolean, RunnableWithException) to allow the
+     * plugin to run in old (pre 4.3.0) and new versions of OmegaT.*/
+    public static void executeExclusively(boolean waitForUnlock, RunnableWithException run)
+            throws Exception {
+        if (!EXCLUSIVE_RUN_LOCK.tryLock(waitForUnlock ? 180000 : 1, TimeUnit.MILLISECONDS)) {
+            Exception ex = new TimeoutException("Timeout waiting for previous exclusive execution");
+            Exception cause = new Exception("Previous exclusive execution");
+            if (runningStackTrace != null) {
+                cause.setStackTrace(runningStackTrace);
+                ex.initCause(cause);
+            }
+            throw ex;
+        }
+        try {
+            runningStackTrace = new Exception().getStackTrace();
+            run.run();
+        } finally {
+            runningStackTrace = null;
+            EXCLUSIVE_RUN_LOCK.unlock();
+        }
+    }
+
+    private static StackTraceElement[] runningStackTrace;
+
+    public interface RunnableWithException {
+        void run() throws Exception;
     }
 
 }

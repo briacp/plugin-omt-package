@@ -1,5 +1,9 @@
 # Change Log
 
+## [v1.3.0]
+
+- Copied the method Core.executeExclusively(boolean, RunnableWithException) to allow the plugin to run in old (pre 4.3.0) and new versions of OmegaT.
+
 ## [v1.2.1]
 
 - Create `.empty` file when a directory containing only excluded file is empty.
