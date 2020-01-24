@@ -555,7 +555,7 @@ public class ManageOMTPackage {
 
         List<String> listExcludes = Arrays.asList(pluginProps.getProperty(PROPERTY_EXCLUDE, DEFAULT_EXCLUDE).split(";"));
 
-        DirectoryStream.Filter<Path> filter = new DirectoryFilter(listExcludes);
+        DirectoryStream.Filter<Path> filter = new DirectoryFilter(path, listExcludes);
 
         BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(omtZip));
         Log.log(String.format("Zipping project [%s] to file [%s]", path, omtZip.getAbsolutePath()));
