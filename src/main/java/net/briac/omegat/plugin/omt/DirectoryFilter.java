@@ -25,10 +25,9 @@ public class DirectoryFilter implements DirectoryStream.Filter<Path> {
     @Override
     public boolean accept(Path entry) throws IOException {
         String matchEntry = FilenameUtils.normalizeNoEndSeparator(projectRoot.relativize(entry).toString(), true);
-        //org.omegat.util.Log.log(String.format("filter\tentry:[%s]", matchEntry));
         for (Pattern excludePattern : excludePatterns) {
             if (excludePattern.matcher(matchEntry).find()) {
-                ManageOMTPackage.LOGGER.log(Level.FINE, String.format("Excluded\t%s", entry));
+                ManageOMTPackage.LOGGER.log(Level.INFO, String.format("Exclude entry [%s] from regex [%s]", matchEntry, excludePattern.pattern()));
                 return false;
             }
         }
