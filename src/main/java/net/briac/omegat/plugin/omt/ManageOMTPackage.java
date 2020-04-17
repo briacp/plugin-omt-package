@@ -35,6 +35,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Arrays;
+import java.util.Comparator;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
@@ -60,8 +61,11 @@ import javax.swing.SwingWorker;
 import org.apache.commons.io.FileUtils;
 import org.omegat.core.Core;
 import org.omegat.core.CoreEvents;
+import org.omegat.core.data.ProjectFactory;
 import org.omegat.core.data.ProjectProperties;
 import org.omegat.core.events.IApplicationEventListener;
+import org.omegat.core.segmentation.Segmenter;
+import org.omegat.filters2.master.FilterMaster;
 import org.omegat.gui.main.IMainMenu;
 import org.omegat.gui.main.IMainWindow;
 import org.omegat.gui.main.ProjectUICommands;
@@ -86,7 +90,6 @@ import groovyjarjarcommonscli.OptionBuilder;
 import groovyjarjarcommonscli.Options;
 import groovyjarjarcommonscli.ParseException;
 
-@SuppressWarnings("deprecation")
 public class ManageOMTPackage {
 
     public static final String PROPERTY_POST_PACKAGE_SCRIPT = "post-package-script";
@@ -105,9 +108,10 @@ public class ManageOMTPackage {
     protected static final ResourceBundle res = ResourceBundle.getBundle("omt-package", Locale.getDefault());
 
     private static final ReentrantLock EXCLUSIVE_RUN_LOCK = new ReentrantLock();
-    
+
     private static JMenuItem importOMT;
     private static JMenuItem exportOMT;
+    private static JMenuItem exportDeleteOMT;
 
     private static boolean cliMode = false;
 
@@ -123,6 +127,7 @@ public class ManageOMTPackage {
 
         // Parse the CLI options
         Options options = new Options();
+        //@formatter:off
         Option configOpt = OptionBuilder
                 .withLongOpt("config")
                 .withArgName("property-file")
@@ -243,7 +248,14 @@ public class ManageOMTPackage {
                     projectExportOMT();
                 });
                 projectMenu.add(exportOMT, startMenuIndex++);
-                //projectMenu.add(new JPopupMenu.Separator(), startMenuIndex++);
+
+                exportDeleteOMT = new JMenuItem();
+                Mnemonics.setLocalizedText(exportDeleteOMT, res.getString("omt.menu.export.delete"));
+                exportDeleteOMT.addActionListener(e -> {
+                    projectExportOMT(true);
+                });
+                projectMenu.add(exportDeleteOMT, startMenuIndex++);
+                // projectMenu.add(new JPopupMenu.Separator(), startMenuIndex++);
 
                 onProjectStatusChanged(false);
             }
@@ -261,6 +273,9 @@ public class ManageOMTPackage {
     private static void onProjectStatusChanged(boolean isProjectLoaded) {
         if (exportOMT != null) {
             exportOMT.setEnabled(isProjectLoaded);
+        }
+        if (exportDeleteOMT != null) {
+            exportDeleteOMT.setEnabled(isProjectLoaded);
         }
         if (importOMT != null) {
             importOMT.setEnabled(!isProjectLoaded);
@@ -298,12 +313,14 @@ public class ManageOMTPackage {
                 try {
 
                     if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_PROMPT_DELETE_IMPORT, "false"))) {
+                        //@formatter:off
                         int deletePackage = JOptionPane.showConfirmDialog(
                                 getMainWindow().getApplicationFrame(),
                                 res.getString("omt.dialog.delete_package"),
                                 res.getString("omt.dialog.delete_package.title"),
                                 JOptionPane.YES_NO_OPTION,
                                 JOptionPane.QUESTION_MESSAGE);
+                        //@formatter:on
 
                         if (deletePackage == 0) {
                             Log.log("Deleting imported package");
@@ -326,6 +343,10 @@ public class ManageOMTPackage {
     }
 
     public static void projectExportOMT() {
+        projectExportOMT(false);
+    }
+
+    public static void projectExportOMT(boolean deleteProject) {
         UIThreadsUtil.mustBeSwingThread();
 
         loadPluginProps();
@@ -344,29 +365,37 @@ public class ManageOMTPackage {
         String zipName = Core.getProject().getProjectProperties().getProjectName() + OMT_EXTENSION;
 
         // By default, save inside the project
-        ndm.setSelectedFile(
-                new File(Core.getProject().getProjectProperties().getProjectRootDir(), zipName));
+        File defaultLocation = Core.getProject().getProjectProperties().getProjectRootDir();
+
+        if (deleteProject) {
+            // Since the project will be deleted, no point saving the OMT inside it.
+            defaultLocation = defaultLocation.getParentFile();
+        }
+
+        ndm.setSelectedFile(new File(defaultLocation, zipName));
         int ndmResult = ndm.showSaveDialog(Core.getMainWindow().getApplicationFrame());
         if (ndmResult != OmegaTFileChooser.APPROVE_OPTION) {
             // user press 'Cancel' in project creation dialog
             return;
         }
 
-        // add .zip extension if there is no
-        final File omtFile = ndm.getSelectedFile().getName().toLowerCase(Locale.ENGLISH)
-                .endsWith(OMT_EXTENSION) ? ndm.getSelectedFile()
+        // add .omt extension if there is none
+        final File omtFile = ndm.getSelectedFile().getName().toLowerCase(Locale.ENGLISH).endsWith(OMT_EXTENSION)
+                ? ndm.getSelectedFile()
                 : new File(ndm.getSelectedFile().getAbsolutePath() + OMT_EXTENSION);
 
         Log.log(String.format("Exporting OMT \"%s\"", omtFile.getAbsolutePath()));
 
         // Check and ask if the user wants to overwrite an existing package
         if (omtFile.exists()) {
+            //@formatter:off
             int overwritePackage = JOptionPane.showConfirmDialog(
                     getMainWindow().getApplicationFrame(),
                     res.getString("omt.dialog.overwrite_package"),
                     res.getString("omt.dialog.overwrite_package.title"),
                     JOptionPane.YES_NO_OPTION,
                     JOptionPane.QUESTION_MESSAGE);
+          //@formatter:on
 
             if (overwritePackage == 0) {
                 Log.log("Overwriting existing package");
@@ -374,8 +403,9 @@ public class ManageOMTPackage {
                 Log.log("Not overwriting existing package");
                 return;
             }
-
         }
+
+        File projectDir = Core.getProject().getProjectProperties().getProjectRootDir();
 
         new SwingWorker<Void, Void>() {
             protected Void doInBackground() throws Exception {
@@ -395,11 +425,21 @@ public class ManageOMTPackage {
                             Core.getProject().compileProject(".*");
                         } catch (Exception ex) {
                             throw new RuntimeException(ex);
+                        } finally {
+                            mainWindow.setCursor(oldCursor);
                         }
                     });
                 }
 
                 createOmt(omtFile, Core.getProject().getProjectProperties());
+
+                if (deleteProject) {
+                    ManageOMTPackage.executeExclusively(true, () -> {
+                        ProjectFactory.closeProject();
+                        Core.setFilterMaster(new FilterMaster(Preferences.getFilters()));
+                        Core.setSegmenter(new Segmenter(Preferences.getSRX()));
+                    });
+                }
 
                 // Display the containing folder on the desktop
                 if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_OPEN_DIR, "false"))) {
@@ -414,6 +454,21 @@ public class ManageOMTPackage {
             protected void done() {
                 try {
                     get();
+
+                    if (deleteProject) {
+                        Log.log("Deleting project directory...");
+                        Path pathToBeDeleted = projectDir.toPath();
+                        
+                        Files.walk(pathToBeDeleted)
+                          .sorted(Comparator.reverseOrder())
+                          .map(Path::toFile)
+                          .forEach(File::delete);
+                     
+                        if (Files.exists(pathToBeDeleted)) {
+                            Log.log("Couldn't delete project directory...");
+                        }
+                    }
+
                     SwingUtilities.invokeLater(Core.getEditor()::requestFocus);
                 } catch (Exception ex) {
                     Log.logErrorRB(ex, "PP_ERROR_UNABLE_TO_READ_PROJECT_FILE");
@@ -444,7 +499,7 @@ public class ManageOMTPackage {
             pluginProps.load(inStream);
             Log.logDebug(LOGGER, "OMT App Plugin Properties");
             if (LOGGER.isLoggable(Level.FINE)) {
-                pluginProps.list(System.out);   
+                pluginProps.list(System.out);
             }
         } catch (IOException e) {
             Log.log(String.format("Could not load plugin property file \"%s\"", propFile.getAbsolutePath()));
@@ -462,7 +517,8 @@ public class ManageOMTPackage {
                 Log.logDebug(LOGGER, "OMT Project Plugin Properties");
                 pluginProps.list(System.out);
             } catch (IOException e) {
-                Log.log(String.format("Could not load project plugin property file \"%s\"", propFile.getAbsolutePath()));
+                Log.log(String.format("Could not load project plugin property file \"%s\"",
+                        propFile.getAbsolutePath()));
             }
         } else {
             Log.logDebug(LOGGER, "No project plugin properties [{0}]", propFile.getAbsolutePath());
@@ -486,7 +542,8 @@ public class ManageOMTPackage {
         // Check if we're inside a project folder
         File projectDir = new File(omtFile.getParent(), OConsts.FILE_PROJECT);
 
-        Log.log(String.format("Checking for project file \"%s\": %s", projectDir.getAbsolutePath(), projectDir.exists()));
+        Log.log(String.format("Checking for project file \"%s\": %s", projectDir.getAbsolutePath(),
+                projectDir.exists()));
 
         if (projectDir.exists()) {
             Log.log(res.getString("omt.update.package"));
@@ -497,21 +554,22 @@ public class ManageOMTPackage {
             projectDir.mkdirs();
         }
 
-        for (Enumeration<? extends ZipEntry> en = zip.entries(); en.hasMoreElements(); ) {
+        for (Enumeration<? extends ZipEntry> en = zip.entries(); en.hasMoreElements();) {
             e = en.nextElement();
 
             File outFile = new File(projectDir, e.getName());
 
-            if (outFile.getName().equals(OConsts.STATUS_EXTENSION) &&
-                    outFile.getParentFile().getName().equals(OConsts.DEFAULT_INTERNAL) &&
-                    outFile.exists()) {
+            if (outFile.getName().equals(OConsts.STATUS_EXTENSION)
+                    && outFile.getParentFile().getName().equals(OConsts.DEFAULT_INTERNAL) && outFile.exists()) {
                 // Maybe not overwrite project_save.tmx if it already exists? Ask the user?
+                //@formatter:off
                 int overwriteSave = JOptionPane.showConfirmDialog(
                         getMainWindow().getApplicationFrame(),
                         res.getString("omt.dialog.overwrite_project_save"),
                         res.getString("omt.dialog.overwrite_project_save.title"),
                         JOptionPane.YES_NO_OPTION,
                         JOptionPane.QUESTION_MESSAGE);
+                //@formatter:on
 
                 if (overwriteSave == 0) {
                     // Make a backup even if the user want to overwrite, to be on the safe side.
@@ -553,7 +611,8 @@ public class ManageOMTPackage {
             throw new IllegalArgumentException("Path \"" + path + "\" must be a directory.");
         }
 
-        List<String> listExcludes = Arrays.asList(pluginProps.getProperty(PROPERTY_EXCLUDE, DEFAULT_EXCLUDE).split(";"));
+        List<String> listExcludes = Arrays
+                .asList(pluginProps.getProperty(PROPERTY_EXCLUDE, DEFAULT_EXCLUDE).split(";"));
 
         DirectoryStream.Filter<Path> filter = new DirectoryFilter(path, listExcludes);
 
@@ -614,7 +673,7 @@ public class ManageOMTPackage {
     }
 
     private static final int addZipDir(final ZipOutputStream out, final Path root, final Path dir,
-                                        final ProjectProperties props, DirectoryStream.Filter<Path> filter) throws IOException {
+            final ProjectProperties props, DirectoryStream.Filter<Path> filter) throws IOException {
         int addedFiles = 0;
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, filter)) {
             for (Path child : stream) {
@@ -622,15 +681,18 @@ public class ManageOMTPackage {
 
                 // Skip projects inside projects
                 if (Files.isDirectory(child) && new File(child.toFile(), OConsts.FILE_PROJECT).exists()) {
-                    Log.log(String.format("The directory \"%s\" appears to be an OmegaT project, we'll skip it.", child.toFile().getAbsolutePath()));
+                    Log.log(String.format("The directory \"%s\" appears to be an OmegaT project, we'll skip it.",
+                            child.toFile().getAbsolutePath()));
                     continue;
                 }
 
                 if (root == null && childPath.endsWith(OConsts.FILE_PROJECT)) {
                     // Special case - when a project is opened, the project file is locked and
                     // can't be copied directly. To avoid this, we make a temp copy.
-                    // We name it with a .bak extension to make sure it's not included in the package.
-                    File tmpProjectFile = File.createTempFile("omt", OConsts.BACKUP_EXTENSION, props.getProjectRootDir());
+                    // We name it with a .bak extension to make sure it's not included in the
+                    // package.
+                    File tmpProjectFile = File.createTempFile("omt", OConsts.BACKUP_EXTENSION,
+                            props.getProjectRootDir());
                     try {
                         ProjectFileStorage.writeProjectFile(props, tmpProjectFile);
                     } catch (Exception e) {
@@ -643,7 +705,8 @@ public class ManageOMTPackage {
                     out.closeEntry();
                     boolean isTmpDeleted = tmpProjectFile.delete();
                     if (!isTmpDeleted) {
-                        Log.log(String.format("Could not delete temporary file \"%s\". You can safely delete it.", tmpProjectFile.getAbsolutePath()));
+                        Log.log(String.format("Could not delete temporary file \"%s\". You can safely delete it.",
+                                tmpProjectFile.getAbsolutePath()));
                     }
                     continue;
                 }
@@ -657,8 +720,7 @@ public class ManageOMTPackage {
                         createEmptyFile(out, entry);
                     }
                     int added = addZipDir(out, entry, child, props, filter);
-                    if (!emptyDir && added == 0)
-                    {
+                    if (!emptyDir && added == 0) {
                         createEmptyFile(out, entry);
                     }
                     addedFiles += added;
@@ -680,12 +742,13 @@ public class ManageOMTPackage {
         out.putNextEntry(new ZipEntry(emptyDirFile.replace("\\", "/")));
         out.closeEntry();
     }
-    
-    
-    /** This is copied from org.omegat.core.Core.executeExclusively(boolean, RunnableWithException) to allow the
-     * plugin to run in old (pre 4.3.0) and new versions of OmegaT.*/
-    public static void executeExclusively(boolean waitForUnlock, RunnableWithException run)
-            throws Exception {
+
+    /**
+     * This is copied from org.omegat.core.Core.executeExclusively(boolean,
+     * RunnableWithException) to allow the plugin to run in old (pre 4.3.0) and new
+     * versions of OmegaT.
+     */
+    public static void executeExclusively(boolean waitForUnlock, RunnableWithException run) throws Exception {
         if (!EXCLUSIVE_RUN_LOCK.tryLock(waitForUnlock ? 180000 : 1, TimeUnit.MILLISECONDS)) {
             Exception ex = new TimeoutException("Timeout waiting for previous exclusive execution");
             Exception cause = new Exception("Previous exclusive execution");
