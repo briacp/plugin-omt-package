@@ -34,8 +34,10 @@ import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.Date;
 import java.util.Enumeration;
 import java.util.HashMap;
 import java.util.List;
@@ -45,7 +47,10 @@ import java.util.ResourceBundle;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.logging.FileHandler;
+import java.util.logging.Formatter;
 import java.util.logging.Level;
+import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -91,8 +96,7 @@ import groovyjarjarcommonscli.Options;
 import groovyjarjarcommonscli.ParseException;
 
 public class ManageOMTPackage {
-
-    public static final String PROPERTY_POST_PACKAGE_SCRIPT = "post-package-script";
+	public static final String PROPERTY_POST_PACKAGE_SCRIPT = "post-package-script";
 
     public static final String OMT_EXTENSION = ".omt";
     public static final String IGNORE_FILE = ".empty";
@@ -104,6 +108,9 @@ public class ManageOMTPackage {
     public static final String PROPERTY_GENERATE_TARGET = "generate-target-files";
     public static final String PROPERTY_PROMPT_DELETE_IMPORT = "prompt-remove-omt-after-import";
     protected static final Logger LOGGER = Logger.getLogger(ManageOMTPackage.class.getName());
+
+    private static final Logger OMT_PACKER_LOG = Logger.getLogger(ManageOMTPackage.class.getName() + ".Project");
+    private static final String OMT_PACKER_LOGNAME = "/omt-packer.log";
 
     protected static final ResourceBundle res = ResourceBundle.getBundle("omt-package", Locale.getDefault());
 
@@ -413,6 +420,13 @@ public class ManageOMTPackage {
                 Cursor hourglassCursor = Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR);
                 Cursor oldCursor = mainWindow.getCursor();
                 mainWindow.setCursor(hourglassCursor);
+
+                FileHandler logHandler = initLogger();
+                OMT_PACKER_LOG.info("Packing project  \"" + Core.getProject().getProjectProperties().getProjectRootDir().getAbsolutePath() + 
+                		"\" to file \"" + omtFile + "\".");
+                if (logHandler != null) {
+                	logHandler.close();
+                }
 
                 mainWindow.showStatusMessageRB("MW_STATUS_SAVING");
                 ManageOMTPackage.executeExclusively(true, () -> {
@@ -742,6 +756,20 @@ public class ManageOMTPackage {
         out.putNextEntry(new ZipEntry(emptyDirFile.replace("\\", "/")));
         out.closeEntry();
     }
+    
+    private static FileHandler initLogger() {
+		try {
+			String logFile = Core.getProject().getProjectProperties().getProjectInternalDir() + OMT_PACKER_LOGNAME;
+			FileHandler fhandler = new FileHandler(logFile, true);
+			SimpleOmtLogFormatter sformatter = new SimpleOmtLogFormatter();
+            fhandler.setFormatter(sformatter);
+	    	OMT_PACKER_LOG.addHandler(fhandler);
+	    	return fhandler;
+		} catch (IOException e) {
+			Log.logDebug(LOGGER, "Error initializing omt logger: {0}", e.getMessage());
+			return null;
+		}
+    }
 
     /**
      * This is copied from org.omegat.core.Core.executeExclusively(boolean,
@@ -773,4 +801,14 @@ public class ManageOMTPackage {
         void run() throws Exception;
     }
 
+	private static class SimpleOmtLogFormatter extends Formatter
+	{
+		@Override
+		public String format(final LogRecord record)
+		{
+			return String.format("%1$s\t%2$s\n",
+					new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date(record.getMillis())),
+					formatMessage(record));
+		}
+	}
 }
