@@ -1,5 +1,16 @@
 # Change Log
 
+## [v1.6.0]
+
+- Pack OMT and delete project menu
+- Log all the included/excluded files in omegat/omt-packer.log. NB, the version in the .omt package should not be relied upon as files can be packed after it and not logged.
+
+## [v1.5.0]
+
+
+## [v1.4.0]
+
+
 ## [v1.3.0]
 
 - Copied the method Core.executeExclusively(boolean, RunnableWithException) to allow the plugin to run in old (pre 4.3.0) and new versions of OmegaT.
