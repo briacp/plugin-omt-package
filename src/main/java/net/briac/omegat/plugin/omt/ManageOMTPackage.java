@@ -103,7 +103,7 @@ public class ManageOMTPackage {
     public static final String CONFIG_FILE = "omt-package-config.properties";
 
     public static final String PROPERTY_EXCLUDE = "exclude-pattern";
-    public static final String DEFAULT_EXCLUDE = "\\.(zip|bak|omt)$";
+    public static final String DEFAULT_EXCLUDE = "\\.(zip|bak|omt|lck)$";
     public static final String PROPERTY_OPEN_DIR = "open-directory-after-export";
     public static final String PROPERTY_GENERATE_TARGET = "generate-target-files";
     public static final String PROPERTY_PROMPT_DELETE_IMPORT = "prompt-remove-omt-after-import";
@@ -422,11 +422,6 @@ public class ManageOMTPackage {
                 mainWindow.setCursor(hourglassCursor);
 
                 FileHandler logHandler = initLogger();
-                OMT_PACKER_LOG.info("Packing project  \"" + Core.getProject().getProjectProperties().getProjectRootDir().getAbsolutePath() + 
-                		"\" to file \"" + omtFile + "\".");
-                if (logHandler != null) {
-                	logHandler.close();
-                }
 
                 mainWindow.showStatusMessageRB("MW_STATUS_SAVING");
                 ManageOMTPackage.executeExclusively(true, () -> {
@@ -446,6 +441,10 @@ public class ManageOMTPackage {
                 }
 
                 createOmt(omtFile, Core.getProject().getProjectProperties());
+
+                if (logHandler != null) {
+                	logHandler.close();
+                }
 
                 if (deleteProject) {
                     ManageOMTPackage.executeExclusively(true, () -> {
@@ -477,7 +476,7 @@ public class ManageOMTPackage {
                           .sorted(Comparator.reverseOrder())
                           .map(Path::toFile)
                           .forEach(File::delete);
-                     
+
                         if (Files.exists(pathToBeDeleted)) {
                             Log.log("Couldn't delete project directory...");
                         }
@@ -631,12 +630,13 @@ public class ManageOMTPackage {
         DirectoryStream.Filter<Path> filter = new DirectoryFilter(path, listExcludes);
 
         BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(omtZip));
-        Log.log(String.format("Zipping project [%s] to file [%s]", path, omtZip.getAbsolutePath()));
+        omtPackLog(String.format("Zipping project [%s] to file [%s]", path, omtZip.getAbsolutePath()));
         int addedFiles = 0;
         try (ZipOutputStream out = new ZipOutputStream(bos)) {
             addedFiles = addZipDir(out, null, path, props, filter);
+        } finally {
+        	omtPackLog(String.format("Added %s files to the Zip.", addedFiles));
         }
-        Log.log(String.format("Added %s files to the Zip.", addedFiles));
 
         String postPackageScript = pluginProps.getProperty(PROPERTY_POST_PACKAGE_SCRIPT);
         if (postPackageScript != null) {
@@ -695,7 +695,7 @@ public class ManageOMTPackage {
 
                 // Skip projects inside projects
                 if (Files.isDirectory(child) && new File(child.toFile(), OConsts.FILE_PROJECT).exists()) {
-                    Log.log(String.format("The directory \"%s\" appears to be an OmegaT project, we'll skip it.",
+                	omtPackLog(String.format("The directory \"%s\" appears to be an OmegaT project, we'll skip it.",
                             child.toFile().getAbsolutePath()));
                     continue;
                 }
@@ -712,7 +712,7 @@ public class ManageOMTPackage {
                     } catch (Exception e) {
                         throw new IOException(e);
                     }
-                    Log.logDebug(LOGGER, "addZipDir\tproject\t[{0}]", OConsts.FILE_PROJECT);
+                    omtPackLog(String.format("addZipDir\tproject\t[%s]", OConsts.FILE_PROJECT));
                     out.putNextEntry(new ZipEntry(OConsts.FILE_PROJECT));
                     Files.copy(Paths.get(tmpProjectFile.getAbsolutePath()), out);
                     addedFiles++;
@@ -739,7 +739,7 @@ public class ManageOMTPackage {
                     }
                     addedFiles += added;
                 } else {
-                    Log.logDebug(LOGGER, "addZipDir\tfile\t[{0}]", entry);
+                	omtPackLog(String.format("addZipDir\tfile\t[%s]", entry));
                     out.putNextEntry(new ZipEntry(entry.toString().replace("\\", "/")));
                     Files.copy(child, out);
                     addedFiles++;
@@ -752,7 +752,7 @@ public class ManageOMTPackage {
 
     private static void createEmptyFile(final ZipOutputStream out, Path entry) throws IOException {
         String emptyDirFile = entry.toString() + File.separatorChar + IGNORE_FILE;
-        Log.logDebug(LOGGER, "createEmptyFile\t[{0}]", emptyDirFile);
+        omtPackLog(String.format("createEmptyFile\t[%s]", emptyDirFile));
         out.putNextEntry(new ZipEntry(emptyDirFile.replace("\\", "/")));
         out.closeEntry();
     }
@@ -799,6 +799,11 @@ public class ManageOMTPackage {
 
     public interface RunnableWithException {
         void run() throws Exception;
+    }
+    
+    protected static void omtPackLog(String msg, Object... params) {
+    	Log.logDebug(LOGGER, msg);
+    	OMT_PACKER_LOG.info(msg);
     }
 
 	private static class SimpleOmtLogFormatter extends Formatter
