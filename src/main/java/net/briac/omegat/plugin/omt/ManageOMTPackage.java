@@ -310,9 +310,17 @@ public class ManageOMTPackage {
 
         new SwingWorker<Void, Void>() {
             protected Void doInBackground() throws Exception {
+                IMainWindow mainWindow = Core.getMainWindow();
+                Cursor hourglassCursor = Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR);
+                Cursor oldCursor = mainWindow.getCursor();
+                mainWindow.setCursor(hourglassCursor);
+                showStatusMessage(res.getString("omt.status.importing_omt"));
 
                 final File projectDir = extractFromOmt(omtFile);
                 ProjectUICommands.projectOpen(projectDir);
+
+                showStatusMessage(res.getString("omt.status.omt_imported"));
+                mainWindow.setCursor(oldCursor);
                 return null;
             }
 
@@ -440,6 +448,7 @@ public class ManageOMTPackage {
                     });
                 }
 
+                showStatusMessage(res.getString("omt.status.exporting_omt"));
                 createOmt(omtFile, Core.getProject().getProjectProperties());
 
                 if (logHandler != null) {
@@ -459,7 +468,7 @@ public class ManageOMTPackage {
                     Desktop.getDesktop().open(omtFile.getParentFile());
                 }
 
-                mainWindow.showStatusMessageRB("MW_STATUS_SAVED");
+                showStatusMessage(res.getString("omt.status.omt_exported"));
                 mainWindow.setCursor(oldCursor);
                 return null;
             }
@@ -469,6 +478,7 @@ public class ManageOMTPackage {
                     get();
 
                     if (deleteProject) {
+                    	showStatusMessage(res.getString("omt.status.delete_project"));
                         Log.log("Deleting project directory...");
                         Path pathToBeDeleted = projectDir.toPath();
                         
@@ -806,6 +816,12 @@ public class ManageOMTPackage {
     	OMT_PACKER_LOG.info(msg);
     }
 
+    /** Hack to display a message other than a Bundle.properties string*/
+    private static void showStatusMessage(String msg) {
+    	// app-version-template-pretty={0} {1}
+    	Core.getMainWindow().showStatusMessageRB("app-version-template-pretty", msg, "");
+    }
+    
 	private static class SimpleOmtLogFormatter extends Formatter
 	{
 		@Override
