@@ -637,6 +637,9 @@ public class ManageOMTPackage {
         List<String> listExcludes = Arrays
                 .asList(pluginProps.getProperty(PROPERTY_EXCLUDE, DEFAULT_EXCLUDE).split(";"));
 
+        // Always exclude lock file, as it would cause the whole packing to fail
+        listExcludes.add("\\.lck$");
+
         DirectoryStream.Filter<Path> filter = new DirectoryFilter(path, listExcludes);
 
         BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(omtZip));
