@@ -637,13 +637,11 @@ public class ManageOMTPackage {
         List<String> listExcludes = Arrays
                 .asList(pluginProps.getProperty(PROPERTY_EXCLUDE, DEFAULT_EXCLUDE).split(";"));
 
-        // Always exclude lock file, as it would cause the whole packing to fail
-        listExcludes.add("\\.lck$");
-
         DirectoryStream.Filter<Path> filter = new DirectoryFilter(path, listExcludes);
 
         BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(omtZip));
-        omtPackLog(String.format("Zipping project [%s] to file [%s]", path, omtZip.getAbsolutePath()));
+        String username = Preferences.getPreferenceDefault(Preferences.TEAM_AUTHOR, System.getProperty("user.name"));
+        omtPackLog(String.format("User \"%s\" zipping project [%s] to file [%s]", username, path, omtZip.getAbsolutePath()));
         int addedFiles = 0;
         try (ZipOutputStream out = new ZipOutputStream(bos)) {
             addedFiles = addZipDir(out, null, path, props, filter);

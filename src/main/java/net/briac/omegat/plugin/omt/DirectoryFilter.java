@@ -19,6 +19,9 @@ public class DirectoryFilter implements DirectoryStream.Filter<Path> {
         for (String e : excludePatterns) {
             this.excludePatterns.add(Pattern.compile(e));
         }
+
+        // Always exclude lock file, as it would cause the whole packing to fail
+        this.excludePatterns.add(Pattern.compile("\\.lck$"));
     }
 
     @Override
