@@ -29,7 +29,6 @@ import org.omegat.util.OConsts;
 
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.Marshaller;
-import javax.xml.bind.annotation.adapters.XmlJavaTypeAdapter.DEFAULT;
 
 import java.io.File;
 import java.io.IOException;
