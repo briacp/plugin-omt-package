@@ -22,6 +22,9 @@ public class DirectoryFilter implements DirectoryStream.Filter<Path> {
 
         // Always exclude lock file, as it would cause the whole packing to fail
         this.excludePatterns.add(Pattern.compile("\\.lck$"));
+        
+        // Always exclude the log file as it will be included at the very end
+        this.excludePatterns.add(Pattern.compile(ManageOMTPackage.OMT_PACKER_LOGNAME.replace(".", "\\.") + "$"));
     }
 
     @Override
