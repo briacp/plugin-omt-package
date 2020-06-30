@@ -1,7 +1,5 @@
 plugins {
     id 'java'
-    id 'findbugs'
-    id 'checkstyle'
     id 'distribution'
     id 'maven'
     id 'idea'
@@ -51,35 +49,15 @@ jar {
                 "OmegaT-Plugins": pluginMainClass,
                 "Plugin-Version": version,
                 "Plugin-Name": pluginName,
-                "Main-Class": pluginMainClass
+                "Plugin-Author": pluginAuthor,
+                "Plugin-Description": pluginDescription,
+                "Main-Class": pluginMainClass,
+                // Used to access the name/version inside the plugin
+                "Implementation-Title": pluginName,
+                "Implementation-Version": version
         )
     }
 }
-
-/* Checkstyle */
-checkstyle {
-    config = resources.text.fromFile("${rootProject.projectDir}/config/checkstyle/checkstyle.xml")
-    ignoreFailures = true
-    toolVersion = '7.1'
-    sourceSets = [project.sourceSets.main]
-}
-tasks.checkstyleMain.setGroup('Verification')
-tasks.remove(tasks['checkstyleTest'])
-
-/* FindBugs */
-findbugs {
-    ignoreFailures = true
-    sourceSets = [project.sourceSets.main]
-}
-
-tasks.withType(FindBugs) {
-    setGroup('Verification')
-    reports {
-        xml.enabled = false
-        html.enabled = true
-    }
-}
-tasks.remove(tasks['findbugsTest'])
 
 artifacts {
     archives jar
