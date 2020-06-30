@@ -28,6 +28,7 @@ import java.io.BufferedOutputStream;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.file.DirectoryStream;
@@ -47,10 +48,7 @@ import java.util.ResourceBundle;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.logging.FileHandler;
-import java.util.logging.Formatter;
 import java.util.logging.Level;
-import java.util.logging.LogRecord;
 import java.util.logging.Logger;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
@@ -95,46 +93,48 @@ import groovyjarjarcommonscli.OptionBuilder;
 import groovyjarjarcommonscli.Options;
 import groovyjarjarcommonscli.ParseException;
 
-public class ManageOMTPackage {
+public class ManageOMTPackage
+{
+	public static final String PLUGIN_VERSION = ManageOMTPackage.class.getPackage().getImplementationVersion();
 	public static final String PROPERTY_POST_PACKAGE_SCRIPT = "post-package-script";
 
-    public static final String OMT_EXTENSION = ".omt";
-    public static final String IGNORE_FILE = ".empty";
-    public static final String CONFIG_FILE = "omt-package-config.properties";
+	public static final String OMT_EXTENSION = ".omt";
+	public static final String IGNORE_FILE = ".empty";
+	public static final String CONFIG_FILE = "omt-package-config.properties";
 
-    public static final String PROPERTY_EXCLUDE = "exclude-pattern";
-    public static final String DEFAULT_EXCLUDE = "\\.(zip|bak|omt|lck)$";
-    public static final String PROPERTY_OPEN_DIR = "open-directory-after-export";
-    public static final String PROPERTY_GENERATE_TARGET = "generate-target-files";
-    public static final String PROPERTY_PROMPT_DELETE_IMPORT = "prompt-remove-omt-after-import";
-    protected static final Logger LOGGER = Logger.getLogger(ManageOMTPackage.class.getName());
+	public static final String PROPERTY_EXCLUDE = "exclude-pattern";
+	public static final String DEFAULT_EXCLUDE = "\\.(zip|bak|omt|lck)$;\\.repositories";
+	public static final String PROPERTY_OPEN_DIR = "open-directory-after-export";
+	public static final String PROPERTY_GENERATE_TARGET = "generate-target-files";
+	public static final String PROPERTY_PROMPT_DELETE_IMPORT = "prompt-remove-omt-after-import";
+	protected static final Logger LOGGER = Logger.getLogger(ManageOMTPackage.class.getName());
+	protected static final String OMT_PACKER_LOGNAME = "omt-packer.log";
 
-    private static final Logger OMT_PACKER_LOG = Logger.getLogger(ManageOMTPackage.class.getName() + ".Project");
-    private static final String OMT_PACKER_LOGNAME = "/omt-packer.log";
+	protected static final ResourceBundle res = ResourceBundle.getBundle("omt-package", Locale.getDefault());
 
-    protected static final ResourceBundle res = ResourceBundle.getBundle("omt-package", Locale.getDefault());
+	private static final ReentrantLock EXCLUSIVE_RUN_LOCK = new ReentrantLock();
 
-    private static final ReentrantLock EXCLUSIVE_RUN_LOCK = new ReentrantLock();
+	private static JMenuItem importOMT;
+	private static JMenuItem exportOMT;
+	private static JMenuItem exportDeleteOMT;
 
-    private static JMenuItem importOMT;
-    private static JMenuItem exportOMT;
-    private static JMenuItem exportDeleteOMT;
+	private static boolean cliMode = false;
 
-    private static boolean cliMode = false;
+	private static Properties pluginProps = new Properties();
+	private static FileWriter fhandler;
 
-    private static Properties pluginProps = new Properties();
+	@SuppressWarnings({ "static-access" })
+	public static void main(String[] args) throws Exception
+	{
+		File configFile = new File(StaticUtils.getConfigDir(), CONFIG_FILE);
+		String projectDirectoryName = null;
+		String omtFilename = null;
 
-    @SuppressWarnings({ "static-access" })
-    public static void main(String[] args) throws Exception {
-        File configFile = new File(StaticUtils.getConfigDir(), CONFIG_FILE);
-        String projectDirectoryName = null;
-        String omtFilename = null;
+		cliMode = true;
 
-        cliMode = true;
-
-        // Parse the CLI options
-        Options options = new Options();
-        //@formatter:off
+		// Parse the CLI options
+		Options options = new Options();
+		//@formatter:off
         Option configOpt = OptionBuilder
                 .withLongOpt("config")
                 .withArgName("property-file")
@@ -337,73 +337,75 @@ public class ManageOMTPackage {
                                 JOptionPane.QUESTION_MESSAGE);
                         //@formatter:on
 
-                        if (deletePackage == 0) {
-                            Log.log("Deleting imported package");
-                            if (!omtFile.delete()) {
-                                Log.log(String.format("Could not delete the file %s", omtFile.getAbsolutePath()));
-                            }
-                        } else {
-                            Log.log("Keeping imported package");
-                        }
-                    }
+						if (deletePackage == 0) {
+							Log.log("Deleting imported package");
+							if (!omtFile.delete()) {
+								Log.log(String.format("Could not delete the file %s", omtFile.getAbsolutePath()));
+							}
+						} else {
+							Log.log("Keeping imported package");
+						}
+					}
 
-                    get();
-                    SwingUtilities.invokeLater(Core.getEditor()::requestFocus);
-                } catch (Exception ex) {
-                    Log.logErrorRB(ex, "PP_ERROR_UNABLE_TO_READ_PROJECT_FILE");
-                    getMainWindow().displayErrorRB(ex, "PP_ERROR_UNABLE_TO_READ_PROJECT_FILE");
-                }
-            }
-        }.execute();
-    }
+					get();
+					SwingUtilities.invokeLater(Core.getEditor()::requestFocus);
+				} catch (Exception ex) {
+					Log.logErrorRB(ex, "PP_ERROR_UNABLE_TO_READ_PROJECT_FILE");
+					getMainWindow().displayErrorRB(ex, "PP_ERROR_UNABLE_TO_READ_PROJECT_FILE");
+				}
+			}
+		}.execute();
+	}
 
-    public static void projectExportOMT() {
-        projectExportOMT(false);
-    }
+	public static void projectExportOMT()
+	{
+		projectExportOMT(false);
+	}
 
-    public static void projectExportOMT(boolean deleteProject) {
-        UIThreadsUtil.mustBeSwingThread();
+	public static void projectExportOMT(boolean deleteProject)
+	{
+		UIThreadsUtil.mustBeSwingThread();
 
-        loadPluginProps();
+		loadPluginProps();
 
-        if (!Core.getProject().isProjectLoaded()) {
-            return;
-        }
+		if (!Core.getProject().isProjectLoaded()) {
+			return;
+		}
 
-        // commit the current entry first
-        Core.getEditor().commitAndLeave();
+		// commit the current entry first
+		Core.getEditor().commitAndLeave();
 
-        ChooseOmtProject ndm = new ChooseOmtProject(res.getString("omt.chooser.export"));
+		ChooseOmtProject ndm = new ChooseOmtProject(res.getString("omt.chooser.export"));
 
-        // ask for new OMT file
-        // default name
-        String zipName = Core.getProject().getProjectProperties().getProjectName() + OMT_EXTENSION;
+		// ask for new OMT file
+		// default name
+		String zipName = Core.getProject().getProjectProperties().getProjectName() + OMT_EXTENSION;
 
-        // By default, save inside the project
-        File defaultLocation = Core.getProject().getProjectProperties().getProjectRootDir();
+		// By default, save inside the project
+		File defaultLocation = Core.getProject().getProjectProperties().getProjectRootDir();
 
-        if (deleteProject) {
-            // Since the project will be deleted, no point saving the OMT inside it.
-            defaultLocation = defaultLocation.getParentFile();
-        }
+		if (deleteProject) {
+			// Since the project will be deleted, no point saving the OMT inside it.
+			defaultLocation = defaultLocation.getParentFile();
+		}
 
-        ndm.setSelectedFile(new File(defaultLocation, zipName));
-        int ndmResult = ndm.showSaveDialog(Core.getMainWindow().getApplicationFrame());
-        if (ndmResult != OmegaTFileChooser.APPROVE_OPTION) {
-            // user press 'Cancel' in project creation dialog
-            return;
-        }
+		ndm.setSelectedFile(new File(defaultLocation, zipName));
+		int ndmResult = ndm.showSaveDialog(Core.getMainWindow().getApplicationFrame());
+		if (ndmResult != OmegaTFileChooser.APPROVE_OPTION) {
+			// user press 'Cancel' in project creation dialog
+			return;
+		}
 
-        // add .omt extension if there is none
-        final File omtFile = ndm.getSelectedFile().getName().toLowerCase(Locale.ENGLISH).endsWith(OMT_EXTENSION)
-                ? ndm.getSelectedFile()
-                : new File(ndm.getSelectedFile().getAbsolutePath() + OMT_EXTENSION);
+		// add .omt extension if there is none
+		final File omtFile = ndm.getSelectedFile().getName().toLowerCase(Locale.ENGLISH).endsWith(OMT_EXTENSION)
+				? ndm.getSelectedFile()
+				: new File(ndm.getSelectedFile().getAbsolutePath() + OMT_EXTENSION);
 
-        Log.log(String.format("Exporting OMT \"%s\"", omtFile.getAbsolutePath()));
+		Log.log(String.format("Exporting OMT \"%s\"", omtFile.getAbsolutePath()));
 
-        // Check and ask if the user wants to overwrite an existing package
-        if (omtFile.exists()) {
-            //@formatter:off
+		// Check and ask if the user wants to overwrite an existing package
+		if (omtFile.exists()) {
+			//@formatter:off
             int overwritePackage = JOptionPane.showConfirmDialog(
                     getMainWindow().getApplicationFrame(),
                     res.getString("omt.dialog.overwrite_package"),
@@ -412,180 +414,178 @@ public class ManageOMTPackage {
                     JOptionPane.QUESTION_MESSAGE);
           //@formatter:on
 
-            if (overwritePackage == 0) {
-                Log.log("Overwriting existing package");
-            } else {
-                Log.log("Not overwriting existing package");
-                return;
-            }
-        }
+			if (overwritePackage == 0) {
+				Log.log("Overwriting existing package");
+			} else {
+				Log.log("Not overwriting existing package");
+				return;
+			}
+		}
 
-        File projectDir = Core.getProject().getProjectProperties().getProjectRootDir();
+		File projectDir = Core.getProject().getProjectProperties().getProjectRootDir();
 
-        new SwingWorker<Void, Void>() {
-            protected Void doInBackground() throws Exception {
-                IMainWindow mainWindow = Core.getMainWindow();
-                Cursor hourglassCursor = Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR);
-                Cursor oldCursor = mainWindow.getCursor();
-                mainWindow.setCursor(hourglassCursor);
+		new SwingWorker<Void, Void>()
+		{
+			protected Void doInBackground() throws Exception
+			{
+				IMainWindow mainWindow = Core.getMainWindow();
+				Cursor hourglassCursor = Cursor.getPredefinedCursor(Cursor.WAIT_CURSOR);
+				Cursor oldCursor = mainWindow.getCursor();
+				mainWindow.setCursor(hourglassCursor);
 
-                FileHandler logHandler = initLogger();
+				mainWindow.showStatusMessageRB("MW_STATUS_SAVING");
+				ManageOMTPackage.executeExclusively(true, () -> {
+					Core.getProject().saveProject(true);
+				});
 
-                mainWindow.showStatusMessageRB("MW_STATUS_SAVING");
-                ManageOMTPackage.executeExclusively(true, () -> {
-                    Core.getProject().saveProject(true);
-                });
+				if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_GENERATE_TARGET, "false"))) {
+					ManageOMTPackage.executeExclusively(true, () -> {
+						try {
+							Core.getProject().compileProject(".*");
+						} catch (Exception ex) {
+							throw new RuntimeException(ex);
+						} finally {
+							mainWindow.setCursor(oldCursor);
+						}
+					});
+				}
 
-                if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_GENERATE_TARGET, "false"))) {
-                    ManageOMTPackage.executeExclusively(true, () -> {
-                        try {
-                            Core.getProject().compileProject(".*");
-                        } catch (Exception ex) {
-                            throw new RuntimeException(ex);
-                        } finally {
-                            mainWindow.setCursor(oldCursor);
-                        }
-                    });
-                }
+				showStatusMessage(res.getString("omt.status.exporting_omt"));
+				createOmt(omtFile, Core.getProject().getProjectProperties());
 
-                showStatusMessage(res.getString("omt.status.exporting_omt"));
-                createOmt(omtFile, Core.getProject().getProjectProperties());
+				if (deleteProject) {
+					ManageOMTPackage.executeExclusively(true, () -> {
+						ProjectFactory.closeProject();
+						Core.setFilterMaster(new FilterMaster(Preferences.getFilters()));
+						Core.setSegmenter(new Segmenter(Preferences.getSRX()));
+					});
+				}
 
-                if (logHandler != null) {
-                	logHandler.close();
-                }
+				// Display the containing folder on the desktop
+				if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_OPEN_DIR, "false"))) {
+					Desktop.getDesktop().open(omtFile.getParentFile());
+				}
 
-                if (deleteProject) {
-                    ManageOMTPackage.executeExclusively(true, () -> {
-                        ProjectFactory.closeProject();
-                        Core.setFilterMaster(new FilterMaster(Preferences.getFilters()));
-                        Core.setSegmenter(new Segmenter(Preferences.getSRX()));
-                    });
-                }
+				showStatusMessage(res.getString("omt.status.omt_exported"));
+				mainWindow.setCursor(oldCursor);
+				return null;
+			}
 
-                // Display the containing folder on the desktop
-                if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_OPEN_DIR, "false"))) {
-                    Desktop.getDesktop().open(omtFile.getParentFile());
-                }
+			protected void done()
+			{
+				try {
+					get();
 
-                showStatusMessage(res.getString("omt.status.omt_exported"));
-                mainWindow.setCursor(oldCursor);
-                return null;
-            }
+					if (deleteProject) {
+						showStatusMessage(res.getString("omt.status.delete_project"));
+						Log.log("Deleting project directory...");
+						Path pathToBeDeleted = projectDir.toPath();
 
-            protected void done() {
-                try {
-                    get();
+						Files.walk(pathToBeDeleted).sorted(Comparator.reverseOrder()).map(Path::toFile)
+								.forEach(File::delete);
 
-                    if (deleteProject) {
-                    	showStatusMessage(res.getString("omt.status.delete_project"));
-                        Log.log("Deleting project directory...");
-                        Path pathToBeDeleted = projectDir.toPath();
-                        
-                        Files.walk(pathToBeDeleted)
-                          .sorted(Comparator.reverseOrder())
-                          .map(Path::toFile)
-                          .forEach(File::delete);
+						if (Files.exists(pathToBeDeleted)) {
+							Log.log("Couldn't delete project directory...");
+						}
+					}
 
-                        if (Files.exists(pathToBeDeleted)) {
-                            Log.log("Couldn't delete project directory...");
-                        }
-                    }
+					SwingUtilities.invokeLater(Core.getEditor()::requestFocus);
+				} catch (Exception ex) {
+					Log.logErrorRB(ex, "PP_ERROR_UNABLE_TO_READ_PROJECT_FILE");
+					Core.getMainWindow().displayErrorRB(ex, "PP_ERROR_UNABLE_TO_READ_PROJECT_FILE");
+				}
+			}
+		}.execute();
+	}
 
-                    SwingUtilities.invokeLater(Core.getEditor()::requestFocus);
-                } catch (Exception ex) {
-                    Log.logErrorRB(ex, "PP_ERROR_UNABLE_TO_READ_PROJECT_FILE");
-                    Core.getMainWindow().displayErrorRB(ex, "PP_ERROR_UNABLE_TO_READ_PROJECT_FILE");
-                }
-            }
-        }.execute();
-    }
+	private static void loadPluginProps()
+	{
+		loadPluginProps(new File(StaticUtils.getConfigDir(), CONFIG_FILE));
+	}
 
-    private static void loadPluginProps() {
-        loadPluginProps(new File(StaticUtils.getConfigDir(), CONFIG_FILE));
-    }
+	private static void loadPluginProps(File propFile)
+	{
+		pluginProps = new Properties();
 
-    private static void loadPluginProps(File propFile) {
-        pluginProps = new Properties();
+		if (!propFile.exists()) {
+			Log.logDebug(LOGGER, "No app plugin properties [{0}], creating one...", propFile.getAbsolutePath());
+			try {
+				FileUtils.copyInputStreamToFile(ManageOMTPackage.class.getResourceAsStream("/" + CONFIG_FILE),
+						propFile);
+			} catch (IOException e) {
+				Log.log(e);
+				return;
+			}
+		}
+		try (FileInputStream inStream = new FileInputStream(propFile)) {
+			pluginProps.load(inStream);
+			Log.logDebug(LOGGER, "OMT App Plugin Properties");
+			if (LOGGER.isLoggable(Level.FINE)) {
+				pluginProps.list(System.out);
+			}
+		} catch (IOException e) {
+			Log.log(String.format("Could not load plugin property file \"%s\"", propFile.getAbsolutePath()));
+		}
 
-        if (!propFile.exists()) {
-            Log.logDebug(LOGGER, "No app plugin properties [{0}], creating one...", propFile.getAbsolutePath());
-            try {
-                FileUtils.copyInputStreamToFile(ManageOMTPackage.class.getResourceAsStream("/" + CONFIG_FILE),
-                        propFile);
-            } catch (IOException e) {
-                Log.log(e);
-                return;
-            }
-        }
-        try (FileInputStream inStream = new FileInputStream(propFile)) {
-            pluginProps.load(inStream);
-            Log.logDebug(LOGGER, "OMT App Plugin Properties");
-            if (LOGGER.isLoggable(Level.FINE)) {
-                pluginProps.list(System.out);
-            }
-        } catch (IOException e) {
-            Log.log(String.format("Could not load plugin property file \"%s\"", propFile.getAbsolutePath()));
-        }
+		if (Core.getProject() == null || !Core.getProject().isProjectLoaded()) {
+			// No project specific properties!
+			return;
+		}
 
-        if (Core.getProject() == null || !Core.getProject().isProjectLoaded()) {
-            // No project specific properties!
-            return;
-        }
+		propFile = new File(Core.getProject().getProjectProperties().getProjectRootDir(), CONFIG_FILE);
+		if (propFile.exists()) {
+			try (FileInputStream inStream = new FileInputStream(propFile)) {
+				pluginProps.load(inStream);
+				Log.logDebug(LOGGER, "OMT Project Plugin Properties");
+				pluginProps.list(System.out);
+			} catch (IOException e) {
+				Log.log(String.format("Could not load project plugin property file \"%s\"",
+						propFile.getAbsolutePath()));
+			}
+		} else {
+			Log.logDebug(LOGGER, "No project plugin properties [{0}]", propFile.getAbsolutePath());
+		}
+	}
 
-        propFile = new File(Core.getProject().getProjectProperties().getProjectRootDir(), CONFIG_FILE);
-        if (propFile.exists()) {
-            try (FileInputStream inStream = new FileInputStream(propFile)) {
-                pluginProps.load(inStream);
-                Log.logDebug(LOGGER, "OMT Project Plugin Properties");
-                pluginProps.list(System.out);
-            } catch (IOException e) {
-                Log.log(String.format("Could not load project plugin property file \"%s\"",
-                        propFile.getAbsolutePath()));
-            }
-        } else {
-            Log.logDebug(LOGGER, "No project plugin properties [{0}]", propFile.getAbsolutePath());
-        }
-    }
+	/**
+	 * It creates project internals from OMT zip file.
+	 */
+	public static File extractFromOmt(File omtFile) throws Exception
+	{
+		String omtName = omtFile.getName().replaceAll("\\" + OMT_EXTENSION + "$", "");
 
-    /**
-     * It creates project internals from OMT zip file.
-     */
-    public static File extractFromOmt(File omtFile) throws Exception {
-        String omtName = omtFile.getName().replaceAll("\\" + OMT_EXTENSION + "$", "");
+		ZipFile zip = new ZipFile(omtFile);
 
-        ZipFile zip = new ZipFile(omtFile);
+		ZipEntry e = zip.getEntry(OConsts.FILE_PROJECT);
+		if (e == null) {
+			zip.close();
+			throw new Exception(res.getString("omt.invalid.package"));
+		}
 
-        ZipEntry e = zip.getEntry(OConsts.FILE_PROJECT);
-        if (e == null) {
-            zip.close();
-            throw new Exception(res.getString("omt.invalid.package"));
-        }
+		// Check if we're inside a project folder
+		File projectDir = new File(omtFile.getParent(), OConsts.FILE_PROJECT);
 
-        // Check if we're inside a project folder
-        File projectDir = new File(omtFile.getParent(), OConsts.FILE_PROJECT);
+		Log.log(String.format("Checking for project file \"%s\": %s", projectDir.getAbsolutePath(),
+				projectDir.exists()));
 
-        Log.log(String.format("Checking for project file \"%s\": %s", projectDir.getAbsolutePath(),
-                projectDir.exists()));
+		if (projectDir.exists()) {
+			Log.log(res.getString("omt.update.package"));
+			projectDir = omtFile.getParentFile();
+		} else {
+			Log.log(res.getString("omt.new.package"));
+			projectDir = new File(omtFile.getParentFile(), omtName);
+			projectDir.mkdirs();
+		}
 
-        if (projectDir.exists()) {
-            Log.log(res.getString("omt.update.package"));
-            projectDir = omtFile.getParentFile();
-        } else {
-            Log.log(res.getString("omt.new.package"));
-            projectDir = new File(omtFile.getParentFile(), omtName);
-            projectDir.mkdirs();
-        }
+		for (Enumeration<? extends ZipEntry> en = zip.entries(); en.hasMoreElements();) {
+			e = en.nextElement();
 
-        for (Enumeration<? extends ZipEntry> en = zip.entries(); en.hasMoreElements();) {
-            e = en.nextElement();
+			File outFile = new File(projectDir, e.getName());
 
-            File outFile = new File(projectDir, e.getName());
-
-            if (outFile.getName().equals(OConsts.STATUS_EXTENSION)
-                    && outFile.getParentFile().getName().equals(OConsts.DEFAULT_INTERNAL) && outFile.exists()) {
-                // Maybe not overwrite project_save.tmx if it already exists? Ask the user?
-                //@formatter:off
+			if (outFile.getName().equals(OConsts.STATUS_EXTENSION)
+					&& outFile.getParentFile().getName().equals(OConsts.DEFAULT_INTERNAL) && outFile.exists()) {
+				// Maybe not overwrite project_save.tmx if it already exists? Ask the user?
+				//@formatter:off
                 int overwriteSave = JOptionPane.showConfirmDialog(
                         getMainWindow().getApplicationFrame(),
                         res.getString("omt.dialog.overwrite_project_save"),
@@ -594,243 +594,248 @@ public class ManageOMTPackage {
                         JOptionPane.QUESTION_MESSAGE);
                 //@formatter:on
 
-                if (overwriteSave == 0) {
-                    // Make a backup even if the user want to overwrite, to be on the safe side.
-                    Log.log("Overwriting project_save.tmx");
-                    final File f = new File(new File(projectDir, OConsts.DEFAULT_INTERNAL), OConsts.STATUS_EXTENSION);
-                    Log.log(String.format("Backuping project file \"%s\"", f.getAbsolutePath()));
-                    FileUtil.backupFile(f);
-                } else {
-                    Log.log("Skipping project_save.tmx");
-                    continue;
-                }
-            }
+				if (overwriteSave == 0) {
+					// Make a backup even if the user want to overwrite, to be on the safe side.
+					Log.log("Overwriting project_save.tmx");
+					final File f = new File(new File(projectDir, OConsts.DEFAULT_INTERNAL), OConsts.STATUS_EXTENSION);
+					Log.log(String.format("Backuping project file \"%s\"", f.getAbsolutePath()));
+					FileUtil.backupFile(f);
+				} else {
+					Log.log("Skipping project_save.tmx");
+					continue;
+				}
+			}
 
-            if (e.isDirectory()) {
-                outFile.mkdirs();
-            } else {
-                if (outFile.getName().equals(IGNORE_FILE)) {
-                    outFile.getParentFile().mkdirs();
-                    continue;
-                }
-                try (InputStream in = zip.getInputStream(e)) {
-                    try {
-                        org.apache.commons.io.FileUtils.copyInputStreamToFile(in, outFile);
-                    } catch (IOException ex) {
-                        Log.log(String.format("Error unzipping file \"%s\": %s", outFile, ex.getMessage()));
-                    }
-                }
-            }
-        }
-
-        zip.close();
-
-        return projectDir;
-    }
-
-    public static void createOmt(final File omtZip, final ProjectProperties props) throws Exception {
-        Path path = Paths.get(props.getProjectRootDir().getAbsolutePath());
-        if (!Files.isDirectory(path)) {
-            throw new IllegalArgumentException("Path \"" + path + "\" must be a directory.");
-        }
-
-        List<String> listExcludes = Arrays
-                .asList(pluginProps.getProperty(PROPERTY_EXCLUDE, DEFAULT_EXCLUDE).split(";"));
-
-        DirectoryStream.Filter<Path> filter = new DirectoryFilter(path, listExcludes);
-
-        BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(omtZip));
-        String username = Preferences.getPreferenceDefault(Preferences.TEAM_AUTHOR, System.getProperty("user.name"));
-        omtPackLog(String.format("User \"%s\" zipping project [%s] to file [%s]", username, path, omtZip.getAbsolutePath()));
-        int addedFiles = 0;
-        try (ZipOutputStream out = new ZipOutputStream(bos)) {
-            addedFiles = addZipDir(out, null, path, props, filter);
-        } finally {
-        	omtPackLog(String.format("Added %s files to the Zip.", addedFiles));
-        }
-
-        String postPackageScript = pluginProps.getProperty(PROPERTY_POST_PACKAGE_SCRIPT);
-        if (postPackageScript != null) {
-            runScript(new File(Preferences.getPreference(Preferences.SCRIPTS_DIRECTORY), postPackageScript));
-        }
-
-        if (cliMode) {
-            Log.log(res.getString("omt.dialog.overwrite_package.created"));
-            return;
-        }
-
-        JOptionPane.showMessageDialog(getMainWindow().getApplicationFrame(),
-                res.getString("omt.dialog.overwrite_package.created"),
-                res.getString("omt.dialog.overwrite_package.created.title"), JOptionPane.INFORMATION_MESSAGE);
-    }
-
-    private static void runScript(File scriptFile) {
-        if (scriptFile.isFile() && scriptFile.exists()) {
-            HashMap<String, Object> bindings = new HashMap<>();
-            bindings.put("omtPackageFile", scriptFile);
-
-            bindings.put(ScriptRunner.VAR_CONSOLE, new IScriptLogger() {
-                @Override
-                public void print(Object o) {
-                    Log.log(o.toString());
-                }
-
-                @Override
-                public void println(Object o) {
-                    Log.log(o.toString());
-                }
-
-                @Override
-                public void clear() {
-                    /* empty */
-                }
-            });
-
-            try {
-                String result = ScriptRunner.executeScript(new ScriptItem(scriptFile), bindings);
-                Log.log(result);
-            } catch (Exception ex) {
-                Log.log(ex);
-            }
-        } else {
-            Log.log(String.format("No script file \"%s\".", scriptFile.getAbsolutePath()));
-        }
-    }
-
-    private static final int addZipDir(final ZipOutputStream out, final Path root, final Path dir,
-            final ProjectProperties props, DirectoryStream.Filter<Path> filter) throws IOException {
-        int addedFiles = 0;
-        try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, filter)) {
-            for (Path child : stream) {
-                final Path childPath = child.getFileName();
-
-                // Skip projects inside projects
-                if (Files.isDirectory(child) && new File(child.toFile(), OConsts.FILE_PROJECT).exists()) {
-                	omtPackLog(String.format("The directory \"%s\" appears to be an OmegaT project, we'll skip it.",
-                            child.toFile().getAbsolutePath()));
-                    continue;
-                }
-
-                if (root == null && childPath.endsWith(OConsts.FILE_PROJECT)) {
-                    // Special case - when a project is opened, the project file is locked and
-                    // can't be copied directly. To avoid this, we make a temp copy.
-                    // We name it with a .bak extension to make sure it's not included in the
-                    // package.
-                    File tmpProjectFile = File.createTempFile("omt", OConsts.BACKUP_EXTENSION,
-                            props.getProjectRootDir());
-                    try {
-                        ProjectFileStorage.writeProjectFile(props, tmpProjectFile);
-                    } catch (Exception e) {
-                        throw new IOException(e);
-                    }
-                    omtPackLog(String.format("addZipDir\tproject\t[%s]", OConsts.FILE_PROJECT));
-                    out.putNextEntry(new ZipEntry(OConsts.FILE_PROJECT));
-                    Files.copy(Paths.get(tmpProjectFile.getAbsolutePath()), out);
-                    addedFiles++;
-                    out.closeEntry();
-                    boolean isTmpDeleted = tmpProjectFile.delete();
-                    if (!isTmpDeleted) {
-                        Log.log(String.format("Could not delete temporary file \"%s\". You can safely delete it.",
-                                tmpProjectFile.getAbsolutePath()));
-                    }
-                    continue;
-                }
-
-                Path entry = root == null ? childPath : Paths.get(root.toString(), childPath.toString());
-                if (Files.isDirectory(child)) {
-                    // Before recursing, we add a ZipEntry for the directory to allow
-                    // empty dirs.
-                    boolean emptyDir = child.toFile().listFiles().length == 0;
-                    if (emptyDir) {
-                        createEmptyFile(out, entry);
-                    }
-                    int added = addZipDir(out, entry, child, props, filter);
-                    if (!emptyDir && added == 0) {
-                        createEmptyFile(out, entry);
-                    }
-                    addedFiles += added;
-                } else {
-                	omtPackLog(String.format("addZipDir\tfile\t[%s]", entry));
-                    out.putNextEntry(new ZipEntry(entry.toString().replace("\\", "/")));
-                    Files.copy(child, out);
-                    addedFiles++;
-                    out.closeEntry();
-                }
-            }
-        }
-        return addedFiles;
-    }
-
-    private static void createEmptyFile(final ZipOutputStream out, Path entry) throws IOException {
-        String emptyDirFile = entry.toString() + File.separatorChar + IGNORE_FILE;
-        omtPackLog(String.format("createEmptyFile\t[%s]", emptyDirFile));
-        out.putNextEntry(new ZipEntry(emptyDirFile.replace("\\", "/")));
-        out.closeEntry();
-    }
-    
-    private static FileHandler initLogger() {
-		try {
-			String logFile = Core.getProject().getProjectProperties().getProjectInternalDir() + OMT_PACKER_LOGNAME;
-			FileHandler fhandler = new FileHandler(logFile, true);
-			SimpleOmtLogFormatter sformatter = new SimpleOmtLogFormatter();
-            fhandler.setFormatter(sformatter);
-	    	OMT_PACKER_LOG.addHandler(fhandler);
-	    	return fhandler;
-		} catch (IOException e) {
-			Log.logDebug(LOGGER, "Error initializing omt logger: {0}", e.getMessage());
-			return null;
+			if (e.isDirectory()) {
+				outFile.mkdirs();
+			} else {
+				if (outFile.getName().equals(IGNORE_FILE)) {
+					outFile.getParentFile().mkdirs();
+					continue;
+				}
+				try (InputStream in = zip.getInputStream(e)) {
+					try {
+						org.apache.commons.io.FileUtils.copyInputStreamToFile(in, outFile);
+					} catch (IOException ex) {
+						Log.log(String.format("Error unzipping file \"%s\": %s", outFile, ex.getMessage()));
+					}
+				}
+			}
 		}
-    }
 
-    /**
-     * This is copied from org.omegat.core.Core.executeExclusively(boolean,
-     * RunnableWithException) to allow the plugin to run in old (pre 4.3.0) and new
-     * versions of OmegaT.
-     */
-    public static void executeExclusively(boolean waitForUnlock, RunnableWithException run) throws Exception {
-        if (!EXCLUSIVE_RUN_LOCK.tryLock(waitForUnlock ? 180000 : 1, TimeUnit.MILLISECONDS)) {
-            Exception ex = new TimeoutException("Timeout waiting for previous exclusive execution");
-            Exception cause = new Exception("Previous exclusive execution");
-            if (runningStackTrace != null) {
-                cause.setStackTrace(runningStackTrace);
-                ex.initCause(cause);
-            }
-            throw ex;
-        }
-        try {
-            runningStackTrace = new Exception().getStackTrace();
-            run.run();
-        } finally {
-            runningStackTrace = null;
-            EXCLUSIVE_RUN_LOCK.unlock();
-        }
-    }
+		zip.close();
 
-    private static StackTraceElement[] runningStackTrace;
+		return projectDir;
+	}
 
-    public interface RunnableWithException {
-        void run() throws Exception;
-    }
-    
-    protected static void omtPackLog(String msg, Object... params) {
-    	Log.logDebug(LOGGER, msg);
-    	OMT_PACKER_LOG.info(msg);
-    }
-
-    /** Hack to display a message other than a Bundle.properties string*/
-    private static void showStatusMessage(String msg) {
-    	// app-version-template-pretty={0} {1}
-    	Core.getMainWindow().showStatusMessageRB("app-version-template-pretty", msg, "");
-    }
-    
-	private static class SimpleOmtLogFormatter extends Formatter
+	public static void createOmt(final File omtZip, final ProjectProperties props) throws Exception
 	{
-		@Override
-		public String format(final LogRecord record)
-		{
-			return String.format("%1$s\t%2$s\n",
-					new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date(record.getMillis())),
-					formatMessage(record));
+		Path path = Paths.get(props.getProjectRootDir().getAbsolutePath());
+		if (!Files.isDirectory(path)) {
+			throw new IllegalArgumentException("Path \"" + path + "\" must be a directory.");
+		}
+
+		List<String> listExcludes = Arrays
+				.asList(pluginProps.getProperty(PROPERTY_EXCLUDE, DEFAULT_EXCLUDE).split(";"));
+
+		DirectoryStream.Filter<Path> filter = new DirectoryFilter(path, listExcludes);
+
+		String logFile = Core.getProject().getProjectProperties().getProjectInternal() + OMT_PACKER_LOGNAME;
+		fhandler = new FileWriter(logFile, true);
+
+		BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(omtZip));
+		String username = Preferences.getPreferenceDefault(Preferences.TEAM_AUTHOR, System.getProperty("user.name"));
+		String timestamp = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").format(new Date());
+
+		omtPackLog("------------------------------------");
+		omtPackLog(String.format("Packing timestamp: %s", timestamp));
+		omtPackLog(String.format("OMT plugin version: %s", PLUGIN_VERSION));
+		omtPackLog(String.format("User ID: \"%s\"", username));
+		omtPackLog(String.format("Project name: [%s]", path));
+		omtPackLog(String.format("Package name: [%s]", omtZip.getAbsolutePath()));
+
+		int addedFiles = 0;
+		try (ZipOutputStream out = new ZipOutputStream(bos)) {
+			addedFiles = addZipDir(out, null, path, props, filter);
+
+			omtPackLog(String.format("Added %s files to the Zip.", addedFiles));
+			fhandler.close();
+
+			// Add logfile
+			out.putNextEntry(new ZipEntry(path.relativize(Paths.get(logFile)).toString().replace("\\", "/")));
+			Files.copy(Paths.get(logFile), out);
+			out.closeEntry();
+		}
+
+		String postPackageScript = pluginProps.getProperty(PROPERTY_POST_PACKAGE_SCRIPT);
+		if (postPackageScript != null) {
+			runScript(new File(Preferences.getPreference(Preferences.SCRIPTS_DIRECTORY), postPackageScript));
+		}
+
+		if (cliMode) {
+			Log.log(res.getString("omt.dialog.overwrite_package.created"));
+			return;
+		}
+
+		JOptionPane.showMessageDialog(getMainWindow().getApplicationFrame(),
+				res.getString("omt.dialog.overwrite_package.created"),
+				res.getString("omt.dialog.overwrite_package.created.title"), JOptionPane.INFORMATION_MESSAGE);
+	}
+
+	private static void runScript(File scriptFile)
+	{
+		if (scriptFile.isFile() && scriptFile.exists()) {
+			HashMap<String, Object> bindings = new HashMap<>();
+			bindings.put("omtPackageFile", scriptFile);
+
+			bindings.put(ScriptRunner.VAR_CONSOLE, new IScriptLogger()
+			{
+				@Override
+				public void print(Object o)
+				{
+					Log.log(o.toString());
+				}
+
+				@Override
+				public void println(Object o)
+				{
+					Log.log(o.toString());
+				}
+
+				@Override
+				public void clear()
+				{
+					/* empty */
+				}
+			});
+
+			try {
+				String result = ScriptRunner.executeScript(new ScriptItem(scriptFile), bindings);
+				Log.log(result);
+			} catch (Exception ex) {
+				Log.log(ex);
+			}
+		} else {
+			Log.log(String.format("No script file \"%s\".", scriptFile.getAbsolutePath()));
 		}
 	}
+
+	private static final int addZipDir(final ZipOutputStream out, final Path root, final Path dir,
+			final ProjectProperties props, DirectoryStream.Filter<Path> filter) throws IOException
+	{
+		int addedFiles = 0;
+		try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, filter)) {
+			for (Path child : stream) {
+				final Path childPath = child.getFileName();
+
+				// Skip projects inside projects
+				if (Files.isDirectory(child) && new File(child.toFile(), OConsts.FILE_PROJECT).exists()) {
+					omtPackLog(String.format("The directory \"%s\" appears to be an OmegaT project, we'll skip it.",
+							child.toFile().getAbsolutePath()));
+					continue;
+				}
+
+				if (root == null && childPath.endsWith(OConsts.FILE_PROJECT)) {
+					// Special case - when a project is opened, the project file is locked and
+					// can't be copied directly. To avoid this, we make a temp copy.
+					// We name it with a .bak extension to make sure it's not included in the
+					// package.
+					File tmpProjectFile = File.createTempFile("omt", OConsts.BACKUP_EXTENSION,
+							props.getProjectRootDir());
+					try {
+						ProjectFileStorage.writeProjectFile(props, tmpProjectFile);
+					} catch (Exception e) {
+						throw new IOException(e);
+					}
+					omtPackLog(String.format("addZipDir\tproject\t[%s]", OConsts.FILE_PROJECT));
+					out.putNextEntry(new ZipEntry(OConsts.FILE_PROJECT));
+					Files.copy(Paths.get(tmpProjectFile.getAbsolutePath()), out);
+					addedFiles++;
+					out.closeEntry();
+					boolean isTmpDeleted = tmpProjectFile.delete();
+					if (!isTmpDeleted) {
+						Log.log(String.format("Could not delete temporary file \"%s\". You can safely delete it.",
+								tmpProjectFile.getAbsolutePath()));
+					}
+					continue;
+				}
+
+				Path entry = root == null ? childPath : Paths.get(root.toString(), childPath.toString());
+				if (Files.isDirectory(child)) {
+					// Before recursing, we add a ZipEntry for the directory to allow
+					// empty dirs.
+					boolean emptyDir = child.toFile().listFiles().length == 0;
+					if (emptyDir) {
+						createEmptyFile(out, entry);
+					}
+					int added = addZipDir(out, entry, child, props, filter);
+					if (!emptyDir && added == 0) {
+						createEmptyFile(out, entry);
+					}
+					addedFiles += added;
+				} else {
+					omtPackLog(String.format("addZipDir\tfile\t[%s]", entry));
+					out.putNextEntry(new ZipEntry(entry.toString().replace("\\", "/")));
+					Files.copy(child, out);
+					addedFiles++;
+					out.closeEntry();
+				}
+			}
+		}
+		return addedFiles;
+	}
+
+	private static void createEmptyFile(final ZipOutputStream out, Path entry) throws IOException
+	{
+		String emptyDirFile = entry.toString() + File.separatorChar + IGNORE_FILE;
+		omtPackLog(String.format("createEmptyFile\t[%s]", emptyDirFile));
+		out.putNextEntry(new ZipEntry(emptyDirFile.replace("\\", "/")));
+		out.closeEntry();
+	}
+
+	/**
+	 * This is copied from org.omegat.core.Core.executeExclusively(boolean,
+	 * RunnableWithException) to allow the plugin to run in old (pre 4.3.0) and new
+	 * versions of OmegaT.
+	 */
+	public static void executeExclusively(boolean waitForUnlock, RunnableWithException run) throws Exception
+	{
+		if (!EXCLUSIVE_RUN_LOCK.tryLock(waitForUnlock ? 180000 : 1, TimeUnit.MILLISECONDS)) {
+			Exception ex = new TimeoutException("Timeout waiting for previous exclusive execution");
+			Exception cause = new Exception("Previous exclusive execution");
+			if (runningStackTrace != null) {
+				cause.setStackTrace(runningStackTrace);
+				ex.initCause(cause);
+			}
+			throw ex;
+		}
+		try {
+			runningStackTrace = new Exception().getStackTrace();
+			run.run();
+		} finally {
+			runningStackTrace = null;
+			EXCLUSIVE_RUN_LOCK.unlock();
+		}
+	}
+
+	private static StackTraceElement[] runningStackTrace;
+
+	public interface RunnableWithException
+	{
+		void run() throws Exception;
+	}
+
+	protected static void omtPackLog(String msg) throws IOException
+	{
+		Log.logDebug(LOGGER, msg);
+		fhandler.write(msg + "\n");
+	}
+
+	/** Hack to display a message other than a Bundle.properties string */
+	private static void showStatusMessage(String msg)
+	{
+		// app-version-template-pretty={0} {1}
+		Core.getMainWindow().showStatusMessageRB("app-version-template-pretty", msg, "");
+	}
+
 }
