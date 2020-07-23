@@ -663,7 +663,7 @@ public class ManageOMTPackage
             fhandler.close();
 
             // Add logfile
-            out.putNextEntry(new ZipEntry(path.relativize(Paths.get(logFile)).toString().replace("\\", "/")));
+            out.putNextEntry(new ZipEntry(OConsts.DEFAULT_INTERNAL + '/' + OMT_PACKER_LOGNAME));
             Files.copy(Paths.get(logFile), out);
             out.closeEntry();
         }
