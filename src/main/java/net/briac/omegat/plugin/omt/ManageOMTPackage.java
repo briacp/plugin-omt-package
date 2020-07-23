@@ -216,6 +216,7 @@ public class ManageOMTPackage
 
         Log.log(res.getString("omt.menu.export"));
         loadPluginProps(configFile);
+        Preferences.init();
         // Correctly load the project properties
         ProjectProperties props = org.omegat.util.ProjectFileStorage.loadProjectProperties(projectDir);
         createOmt(omtFile, props);
@@ -640,7 +641,7 @@ public class ManageOMTPackage
 
 		DirectoryStream.Filter<Path> filter = new DirectoryFilter(path, listExcludes);
 
-		String logFile = Core.getProject().getProjectProperties().getProjectInternal() + OMT_PACKER_LOGNAME;
+		String logFile = props.getProjectInternal() + OMT_PACKER_LOGNAME;
 		fhandler = new FileWriter(logFile, true);
 
 		BufferedOutputStream bos = new BufferedOutputStream(new FileOutputStream(omtZip));
