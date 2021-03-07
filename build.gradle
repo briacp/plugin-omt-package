@@ -3,50 +3,22 @@ plugins {
     id 'distribution'
     id 'idea'
 	id 'eclipse'
-	id 'com.github.johnrengelman.shadow' version '6.1.0'
+    id "org.omegat.gradle" version "1.4.2"
 }
 
-repositories {
-    maven {
-        url "https://dl.bintray.com/omegat-org/maven"
-    }
-    jcenter()
+omegat {
+    version = "5.4.1"
+    pluginClass = pluginMainClass
 }
+
+sourceCompatibility = JavaVersion.VERSION_1_8
+targetCompatibility = JavaVersion.VERSION_1_8
 
 dependencies {
-	compileOnly 'org.omegat:omegat:5.4.1'
-	compileOnly 'commons-io:commons-io:2.7'
-	compileOnly 'commons-lang:commons-lang:2.6'
-	compileOnly 'org.omegat:lib-mnemonics:1.0'
-
-	implementation 'commons-cli:commons-cli:1.4'
-}
-
-
-tasks.withType(JavaCompile) {
-    options.compilerArgs << "-Xlint:deprecation" << "-Xlint:unchecked"
-}
-
-jar {
-    manifest {
-        // plugin's main class name is defined in gradle.properties file.
-        attributes(
-                "OmegaT-Plugins": pluginMainClass,
-                "Plugin-Version": project.version,
-                "Plugin-Name": pluginName,
-                "Plugin-Author": pluginAuthor,
-                "Plugin-Description": pluginDescription,
-                "Main-Class": pluginMainClass,
-                // Used to access the name/version inside the plugin
-                "Implementation-Title": pluginName,
-                "Implementation-Version": project.version
-        )
-    }
-}
-
-shadowJar {
-	// remove the '-all' suffix
-	classifier = ''
+    packIntoJar 'commons-cli:commons-cli:1.4'
+	implementation 'commons-io:commons-io:2.7'
+	implementation 'commons-lang:commons-lang:2.6'
+	implementation 'org.omegat:lib-mnemonics:1.0'
 }
 
 distributions {
