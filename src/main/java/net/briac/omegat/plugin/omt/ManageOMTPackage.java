@@ -50,6 +50,7 @@ import java.util.concurrent.TimeoutException;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipFile;
 import java.util.zip.ZipOutputStream;
@@ -91,6 +92,7 @@ import org.omegat.util.StaticUtils;
 import org.omegat.util.gui.UIThreadsUtil;
 import org.openide.awt.Mnemonics;
 
+@SuppressWarnings({"java:S106", "java:S1192"})
 public class ManageOMTPackage
 {
     public static final String PLUGIN_VERSION = ManageOMTPackage.class.getPackage().getImplementationVersion();
@@ -105,6 +107,10 @@ public class ManageOMTPackage
     public static final String PROPERTY_OPEN_DIR = "open-directory-after-export";
     public static final String PROPERTY_GENERATE_TARGET = "generate-target-files";
     public static final String PROPERTY_PROMPT_DELETE_IMPORT = "prompt-remove-omt-after-import";
+    public static final String PROPERTY_PACK_OFFLINE="pack-as-offline-project";
+
+    private static final String FALSE = Boolean.FALSE.toString();
+
     protected static final Logger LOGGER = Logger.getLogger(ManageOMTPackage.class.getName());
     protected static final String OMT_PACKER_LOGNAME = "omt-packer.log";
 
@@ -321,7 +327,7 @@ public class ManageOMTPackage
             protected void done() {
                 try {
 
-                    if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_PROMPT_DELETE_IMPORT, "false"))) {
+                    if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_PROMPT_DELETE_IMPORT, FALSE))) {
                         //@formatter:off
                         int deletePackage = JOptionPane.showConfirmDialog(
                                 getMainWindow().getApplicationFrame(),
@@ -430,7 +436,7 @@ public class ManageOMTPackage
                 mainWindow.showStatusMessageRB("MW_STATUS_SAVING");
                 ManageOMTPackage.executeExclusively(true, () -> Core.getProject().saveProject(true) );
 
-                if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_GENERATE_TARGET, "false"))) {
+                if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_GENERATE_TARGET, FALSE))) {
                     ManageOMTPackage.executeExclusively(true, () -> {
                         try {
                             Core.getProject().compileProject(".*");
@@ -454,7 +460,7 @@ public class ManageOMTPackage
                 }
 
                 // Display the containing folder on the desktop
-                if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_OPEN_DIR, "false"))) {
+                if (Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_OPEN_DIR, FALSE))) {
                     Desktop.getDesktop().open(omtFile.getParentFile());
                 }
 
@@ -474,8 +480,9 @@ public class ManageOMTPackage
                         Log.log("Deleting project directory...");
                         Path pathToBeDeleted = projectDir.toPath();
 
-                        Files.walk(pathToBeDeleted).sorted(Comparator.reverseOrder()).map(Path::toFile)
-                                .forEach(File::delete);
+                        try (Stream<Path> s = Files.walk(pathToBeDeleted)) {
+                            s.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
+                        }
 
                         if (Files.exists(pathToBeDeleted)) {
                             Log.log("Couldn't delete project directory...");
@@ -737,11 +744,15 @@ public class ManageOMTPackage
                     // package.
                     File tmpProjectFile = File.createTempFile("omt", OConsts.BACKUP_EXTENSION,
                             props.getProjectRootDir());
+
+                    boolean skipRepositories = Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_PACK_OFFLINE, FALSE));
+
                     try {
-                        ProjectFileStorage.writeProjectFile(props, tmpProjectFile);
+                        ProjectFileStorage.writeProjectFile(props, tmpProjectFile, skipRepositories);
                     } catch (Exception e) {
                         throw new IOException(e);
                     }
+
                     omtPackLog(String.format("addZipDir\tproject\t[%s]", OConsts.FILE_PROJECT));
                     out.putNextEntry(new ZipEntry(OConsts.FILE_PROJECT));
                     Files.copy(Paths.get(tmpProjectFile.getAbsolutePath()), out);

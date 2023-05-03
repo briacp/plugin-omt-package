@@ -28,6 +28,7 @@ import org.omegat.core.data.ProjectProperties;
 import org.omegat.util.OConsts;
 
 import javax.xml.bind.JAXBContext;
+import javax.xml.bind.JAXBException;
 import javax.xml.bind.Marshaller;
 
 import java.io.File;
@@ -59,9 +60,17 @@ public class ProjectFileStorage {
             throw new ExceptionInInitializerError(ex);
         }
     }
+    
+    private ProjectFileStorage() {
+        /* empty */
+    }
 
     // Should be in org.omegat.util.ProjectFileStorage.writeProjectFile
-    public static void writeProjectFile(ProjectProperties props, File outFile) throws Exception {
+    public static void writeProjectFile(ProjectProperties props, File outFile) throws IOException, JAXBException {
+        writeProjectFile(props, outFile, false);
+    }
+
+    public static void writeProjectFile(ProjectProperties props, File outFile, boolean skipRepositories) throws IOException, JAXBException {
         String root = outFile.getAbsoluteFile().getParent();
 
         Omegat om = new Omegat();
@@ -96,7 +105,7 @@ public class ProjectFileStorage {
         om.getProject().setRemoveTags(props.isRemoveTags());
         om.getProject().setExternalCommand(props.getExternalCommand());
 
-        if (props.getRepositories() != null && !props.getRepositories().isEmpty()) {
+        if (!skipRepositories && props.getRepositories() != null && !props.getRepositories().isEmpty()) {
             om.getProject().setRepositories(new Project.Repositories());
             om.getProject().getRepositories().getRepository().addAll(props.getRepositories());
         }
@@ -122,10 +131,10 @@ public class ProjectFileStorage {
                 // Use the relativized path as it is "near" enough.
                 result = rel;
             } else {
-                //
                 result = absPath.toString();
             }
         } catch (IllegalArgumentException e) {
+            /* empty, not sure if it still can be thrown */
         }
         return normalizeSlashes(result);
     }
