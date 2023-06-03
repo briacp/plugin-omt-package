@@ -726,6 +726,9 @@ public class ManageOMTPackage
             final ProjectProperties props, DirectoryStream.Filter<Path> filter) throws IOException
     {
         int addedFiles = 0;
+
+        boolean skipRepositories = Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_PACK_OFFLINE, FALSE));
+
         try (DirectoryStream<Path> stream = Files.newDirectoryStream(dir, filter)) {
             for (Path child : stream) {
                 final Path childPath = child.getFileName();
@@ -737,6 +740,11 @@ public class ManageOMTPackage
                     continue;
                 }
 
+                if (skipRepositories && (childPath.endsWith(".repositories") || childPath.endsWith(".git")
+                        || childPath.endsWith(".svn"))) {
+                    continue;
+                }
+
                 if (root == null && childPath.endsWith(OConsts.FILE_PROJECT)) {
                     // Special case - when a project is opened, the project file is locked and
                     // can't be copied directly. To avoid this, we make a temp copy.
@@ -745,8 +753,7 @@ public class ManageOMTPackage
                     File tmpProjectFile = File.createTempFile("omt", OConsts.BACKUP_EXTENSION,
                             props.getProjectRootDir());
 
-                    boolean skipRepositories = Boolean.parseBoolean(pluginProps.getProperty(PROPERTY_PACK_OFFLINE, FALSE));
-
+                    
                     try {
                         ProjectFileStorage.writeProjectFile(props, tmpProjectFile, skipRepositories);
                     } catch (Exception e) {
