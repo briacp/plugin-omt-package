@@ -20,21 +20,22 @@
  **************************************************************************/
 package net.briac.omegat.plugin.omt;
 
-import gen.core.project.Masks;
-import gen.core.project.Omegat;
-import gen.core.project.Project;
-import org.apache.commons.lang.StringUtils;
-import org.omegat.core.data.ProjectProperties;
-import org.omegat.util.OConsts;
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 import javax.xml.bind.JAXBContext;
 import javax.xml.bind.JAXBException;
 import javax.xml.bind.Marshaller;
 
-import java.io.File;
-import java.io.IOException;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import org.apache.commons.lang3.StringUtils;
+import org.omegat.core.data.ProjectProperties;
+import org.omegat.util.OConsts;
+
+import gen.core.project.Masks;
+import gen.core.project.Omegat;
+import gen.core.project.Project;
 
 //import org.omegat.util.ProjectFileStorage.DEFAULT_FOLDER_MARKER;
 
