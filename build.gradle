@@ -2,12 +2,13 @@ plugins {
     id 'java'
     id 'distribution'
     id 'idea'
-	id 'eclipse'
-    id "org.omegat.gradle" version "1.5.7"
+    id 'eclipse'
+    id 'signing'
+    id 'org.omegat.gradle' version '1.5.7'
 }
 
 omegat {
-    version = "5.8.0"
+    version = '5.8.0'
     pluginClass = pluginMainClass
 }
 
@@ -40,6 +41,10 @@ task installPlugin(type: Copy) {
         from 'build/install/plugin-omt-package/plugin'
         into omegatPluginDir
         include('*.jar')
+}
+
+signing {
+    sign tasks.jar
 }
 
 installPlugin.dependsOn installDist
